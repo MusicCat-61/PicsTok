@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PicsTok</string>
+    <string name="tab_parser">Парсер</string>
+    <string name="tab_gallery">Галерея</string>
+    <string name="btn_start">Найти фотографии</string>
+    <string name="btn_download_all">Скачать всё</string>
+    <string name="btn_zip">В ZIP архив</string>
+    <string name="btn_clear">Очистить</string>
+    <string name="btn_delete_selected">Удалить выбранное (%1$d)</string>
+    <string name="btn_cancel">Отмена</string>
+    <string name="input_label">Вставьте ссылку TikTok</string>
+    <string name="parse_progress">Обработано: %1$d | Найдено: %2$d</string>
+    <string name="dialog_download_title">Скачать всё?</string>
+    <string name="dialog_download_text">Будет сохранено %1$d фото в галерею.</string>
+    <string name="dialog_zip_title">Создать ZIP?</string>
+    <string name="dialog_zip_text">Все найденные фото будут упакованы в один архив.</string>
+    <string name="toast_saved">Сохранено!</string>
+    <string name="toast_deleted">Выбранные фото удалены</string>
+    <string name="gallery_empty">Тут пока ничего нет</string>
+    <string name="dialog_delete_title">Удалить фото?</string>
+    <string name="dialog_delete_text">Вы уверены, что хотите удалить выбранные фото (%1$d шт.)? Это действие нельзя отменить.</string>
+    <string name="btn_confirm_delete">Удалить</string>
+    <string name="settings_title">Настройки интерфейса</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Темная</string>
+    <string name="theme_system">Системная</string>
+    <string name="material_you_label">Material You (Android 12+)</string>
+    <string name="material_you_desc">Динамические цвета системы</string>
+    <string name="btn_clear_cache">Очистить кэш изображений</string>
+    <string name="cache_cleared">Кэш успешно очищен</string>
+</resources>

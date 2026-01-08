@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PicsTok</string>
+    <string name="tab_parser">Parser</string>
+    <string name="tab_gallery">Gallery</string>
+    <string name="btn_start">Find Photos</string>
+    <string name="btn_download_all">Download All</string>
+    <string name="btn_zip">To ZIP Archive</string>
+    <string name="btn_clear">Clear</string>
+    <string name="btn_delete_selected">Delete Selected (%1$d)</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="input_label">Paste TikTok Link</string>
+    <string name="parse_progress">Processed: %1$d | Found: %2$d</string>
+    <string name="dialog_download_title">Download All?</string>
+    <string name="dialog_download_text">%1$d photos will be saved to your gallery.</string>
+    <string name="dialog_zip_title">Create ZIP?</string>
+    <string name="dialog_zip_text">All found photos will be packed into a single archive.</string>
+    <string name="toast_saved">Saved!</string>
+    <string name="toast_deleted">Selected photos deleted</string>
+    <string name="gallery_empty">Nothing here yet</string>
+    <string name="dialog_delete_title">Delete Photos?</string>
+    <string name="dialog_delete_text">Are you sure you want to delete the selected photos (%1$d pcs)? This action cannot be undone.</string>
+    <string name="btn_confirm_delete">Delete</string>
+    <string name="settings_title">Interface Settings</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_system">System</string>
+    <string name="material_you_label">Material You (Android 12+)</string>
+    <string name="material_you_desc">Dynamic system colors</string>
+    <string name="btn_clear_cache">Clear Image Cache</string>
+    <string name="cache_cleared">Cache cleared successfully</string>
+
+</resources>
