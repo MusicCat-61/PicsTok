@@ -218,6 +218,11 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = {
+
+                            if (state.url.isBlank()) {
+                                Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
                             state.isWorking = true
                             state.isFinished = false
                             state.resultUrls = emptyList()
@@ -250,8 +255,11 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        enabled = state.url.isNotBlank(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+
                     ) { Text(stringResource(R.string.btn_start)) }
                 }
             } else {

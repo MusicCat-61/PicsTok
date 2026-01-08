@@ -2,7 +2,7 @@
     <string name="app_name">PicsTok</string>
     <string name="tab_parser">Парсер</string>
     <string name="tab_gallery">Галерея</string>
-    <string name="btn_start">Найти фото</string>
+    <string name="btn_start">Найти картинки</string>
     <string name="btn_download_all">Скачать все</string>
     <string name="btn_zip">В ZIP архив</string>
     <string name="btn_clear_cache">Очистить кэш</string>
@@ -11,14 +11,14 @@
     <string name="input_label">Вставьте ссылку TikTok</string>
     <string name="parse_progress">Обработано: %1$d | Найдено: %2$d</string>
     <string name="dialog_download_title">Скачать все?</string>
-    <string name="dialog_download_text">%1$d фото будут сохранены в галерею.</string>
+    <string name="dialog_download_text">%1$d картинок будут сохранены в галерею.</string>
     <string name="dialog_zip_title">Создать ZIP?</string>
-    <string name="dialog_zip_text">Все найденные фото будут упакованы в один архив.</string>
+    <string name="dialog_zip_text">Все найденные картинки будут упакованы в один архив.</string>
     <string name="toast_saved">Сохранено!</string>
     <string name="toast_deleted">Удалено</string>
     <string name="gallery_empty">Тут пока пусто</string>
     <string name="dialog_delete_title">Удалить?</string>
-    <string name="dialog_delete_text">Удалить выбранные фото (%1$d шт.) безвозвратно?</string>
+    <string name="dialog_delete_text">Удалить выбранные картинки (%1$d шт.) безвозвратно?</string>
     <string name="btn_confirm_delete">Удалить</string>
     <string name="settings_title">Настройки</string>
     <string name="theme_label">Тема</string>
@@ -32,10 +32,11 @@
     <string name="processing_label">Обработка…</string>
     <string name="gallery_selected_count">Выбрано: %1$d</string>
     <string name="error_download">Ошибка загрузки</string>
-    <string name="toast_already_exists">Фото уже есть в галерее</string>
+    <string name="toast_already_exists">Картинка уже есть в галерее</string>
     <string name="download_cancelled">Загрузка отменена</string>
     <string name="zip_error">Ошибка создания архива</string>
     <string name="share_image_title">Поделиться изображением</string>
     <string name="confirm">Да</string>
     <string name="zip_cancelled">Создание архива отменено</string>
+    <string name="error_empty_link">Сначала вставьте ссылку</string>
 </resources>
