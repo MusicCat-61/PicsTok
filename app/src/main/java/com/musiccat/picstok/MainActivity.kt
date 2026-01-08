@@ -1,13 +1,13 @@
 package com.musiccat.picstok
 
 import android.content.*
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.*
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -21,11 +21,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.disk.DiskCache
@@ -41,6 +44,7 @@ import retrofit2.http.*
 import java.io.*
 import java.net.URL
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -66,6 +70,9 @@ class ParserState {
     var showZipDialog by mutableStateOf(false)
     var themeMode by mutableStateOf("Системная")
     var useMaterialYou by mutableStateOf(false)
+    var isDownloading by mutableStateOf(false)
+    var isZipOperation by mutableStateOf(false) // Новый флаг для точного определения типа отмены
+    var currentDownloadJob: Job? = null
 }
 
 class MainActivity : ComponentActivity() {
@@ -165,6 +172,37 @@ fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
 fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Функция для вставки из буфера
+    fun tryPasteFromClipboard() {
+        if (state.url.isEmpty() && !state.isWorking && !state.isFinished) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clipData = clipboard.primaryClip
+            if (clipData != null && clipData.itemCount > 0) {
+                val text = clipData.getItemAt(0).text?.toString() ?: ""
+                if (text.contains("tiktok.com")) {
+                    state.url = text
+                }
+            }
+        }
+    }
+
+    // Авто-вставка при запуске
+    LaunchedEffect(Unit) {
+        tryPasteFromClipboard()
+    }
+
+    // Авто-вставка при возврате в приложение
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                tryPasteFromClipboard()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -183,6 +221,8 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                             state.isWorking = true
                             state.isFinished = false
                             state.resultUrls = emptyList()
+                            state.processedCount = 0
+                            state.foundCount = 0
                             scope.launch {
                                 try {
                                     val tid = api.startParse(mapOf("url" to state.url.trim()))["task_id"] ?: ""
@@ -190,16 +230,24 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                                         val res = api.getStatus(tid)
                                         val status = res["status"] as? String
                                         if (status == "completed") {
-                                            state.resultUrls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+                                            state.resultUrls = urls.distinct()
+                                            state.foundCount = state.resultUrls.size
                                             state.isWorking = false
                                             state.isFinished = true
+                                            state.url = ""
                                         } else {
                                             state.processedCount = (res["processed_comments"] as? Number)?.toInt() ?: 0
-                                            state.foundCount = (res["found_images"] as? Number)?.toInt() ?: 0
+                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+                                            state.resultUrls = urls.distinct()
+                                            state.foundCount = state.resultUrls.size
                                         }
                                         delay(1500)
                                     }
-                                } catch (e: Exception) { state.isWorking = false }
+                                } catch (e: Exception) {
+                                    state.isWorking = false
+                                    Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -253,7 +301,13 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     }
                     Spacer(Modifier.width(12.dp))
                     OutlinedIconButton(
-                        onClick = { state.resultUrls = emptyList(); state.isFinished = false; state.url = "" },
+                        onClick = {
+                            state.resultUrls = emptyList();
+                            state.isFinished = false;
+                            state.url = "";
+                            state.processedCount = 0;
+                            state.foundCount = 0;
+                        },
                         modifier = Modifier.size(64.dp),
                         colors = IconButtonDefaults.outlinedIconButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         border = BorderStroke(2.dp, MaterialTheme.colorScheme.error)
@@ -270,7 +324,18 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
             onDismissRequest = { state.showDownloadAllDialog = false },
             title = { Text(stringResource(R.string.dialog_download_title)) },
             text = { Text(stringResource(R.string.dialog_download_text, state.resultUrls.size)) },
-            confirmButton = { Button(onClick = { state.showDownloadAllDialog = false; scope.launch { saveAll(context, state.resultUrls) { state.downloadProgress = it } } }) { Text("OK") } },
+            confirmButton = {
+                Button(onClick = {
+                    state.isZipOperation = false // Обычная загрузка
+                    state.showDownloadAllDialog = false
+                    state.currentDownloadJob?.cancel()
+                    state.currentDownloadJob = scope.launch {
+                        saveAll(context, state.resultUrls, state) { state.downloadProgress = it }
+                    }
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
             dismissButton = { TextButton(onClick = { state.showDownloadAllDialog = false }) { Text(stringResource(R.string.btn_cancel)) } }
         )
     }
@@ -280,7 +345,18 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
             onDismissRequest = { state.showZipDialog = false },
             title = { Text(stringResource(R.string.dialog_zip_title)) },
             text = { Text(stringResource(R.string.dialog_zip_text)) },
-            confirmButton = { Button(onClick = { state.showZipDialog = false; scope.launch { downloadAllAsZip(context, state.resultUrls) { state.downloadProgress = it } } }) { Text("OK") } },
+            confirmButton = {
+                Button(onClick = {
+                    state.isZipOperation = true // Операция ZIP
+                    state.showZipDialog = false
+                    state.currentDownloadJob?.cancel()
+                    state.currentDownloadJob = scope.launch {
+                        downloadAllAsZip(context, state.resultUrls, state) { state.downloadProgress = it }
+                    }
+                }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
             dismissButton = { TextButton(onClick = { state.showZipDialog = false }) { Text(stringResource(R.string.btn_cancel)) } }
         )
     }
@@ -295,7 +371,19 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     Text("${(state.downloadProgress * 100).toInt()}%", modifier = Modifier.align(Alignment.End))
                 }
             },
-            confirmButton = {}
+            confirmButton = {
+                TextButton(onClick = {
+                    state.currentDownloadJob?.cancel()
+                    state.downloadProgress = -1f
+                    state.isDownloading = false
+                    // Используем отдельный флаг, который не сбросится диалогом
+                    val msg = if (state.isZipOperation) context.getString(R.string.zip_cancelled)
+                    else context.getString(R.string.download_cancelled)
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
         )
     }
 }
@@ -367,7 +455,12 @@ fun GalleryScreen(isSelectionMode: Boolean, onSelectionChange: (Int) -> Unit, on
                 Button(onClick = {
                     scope.launch(Dispatchers.IO) {
                         selectedImages.forEach { context.contentResolver.delete(it, null, null) }
-                        withContext(Dispatchers.Main) { load(); showDeleteDialog = false; onDeleteFinished(); Toast.makeText(context, R.string.toast_deleted, Toast.LENGTH_SHORT).show() }
+                        withContext(Dispatchers.Main) {
+                            load()
+                            showDeleteDialog = false
+                            onDeleteFinished()
+                            Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.btn_confirm_delete)) }
             },
@@ -399,7 +492,7 @@ fun SettingsSheet(state: ParserState, loader: ImageLoader, onDismiss: () -> Unit
             val isAndroid12 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             ListItem(
                 headlineContent = { Text(stringResource(R.string.material_you_label)) },
-                supportingContent = { Text(if (isAndroid12) stringResource(R.string.material_you_desc) else "Доступно с Android 12") },
+                supportingContent = { Text(stringResource(R.string.material_you_desc)) },
                 trailingContent = { Switch(checked = state.useMaterialYou, onCheckedChange = { state.useMaterialYou = it }, enabled = isAndroid12) }
             )
 
@@ -413,7 +506,12 @@ fun SettingsSheet(state: ParserState, loader: ImageLoader, onDismiss: () -> Unit
             Spacer(Modifier.height(24.dp))
             Text(stringResource(R.string.cache_occupied, cacheSize), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
             Button(
-                onClick = { loader.memoryCache?.clear(); loader.diskCache?.clear(); updateCacheInfo(); Toast.makeText(context, R.string.cache_cleared, Toast.LENGTH_SHORT).show() },
+                onClick = {
+                    loader.memoryCache?.clear()
+                    loader.diskCache?.clear()
+                    updateCacheInfo()
+                    Toast.makeText(context, context.getString(R.string.cache_cleared), Toast.LENGTH_SHORT).show()
+                },
                 enabled = canClear,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -424,45 +522,71 @@ fun SettingsSheet(state: ParserState, loader: ImageLoader, onDismiss: () -> Unit
     }
 }
 
-private suspend fun saveAll(c: Context, urls: List<String>, onProgress: (Float) -> Unit) {
+private suspend fun saveAll(c: Context, urls: List<String>, state: ParserState, onProgress: (Float) -> Unit) {
+    state.isDownloading = true
     withContext(Dispatchers.IO) {
-        urls.forEachIndexed { i, u ->
-            saveImgInternal(c, u)
-            withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / urls.size) }
-        }
-        withContext(Dispatchers.Main) { onProgress(-1f); Toast.makeText(c, R.string.toast_saved, Toast.LENGTH_SHORT).show() }
-    }
-}
-
-private suspend fun saveImg(c: Context, url: String) {
-    withContext(Dispatchers.IO) {
-        val result = saveImgInternal(c, url)
-        withContext(Dispatchers.Main) {
-            when(result) {
-                1 -> Toast.makeText(c, R.string.toast_saved, Toast.LENGTH_SHORT).show()
-                2 -> Toast.makeText(c, R.string.toast_already_exists, Toast.LENGTH_SHORT).show()
-                else -> Toast.makeText(c, R.string.error_download, Toast.LENGTH_SHORT).show()
+        try {
+            val validUrls = urls.distinct()
+            validUrls.forEachIndexed { i, u ->
+                if (state.isDownloading) {
+                    saveImgInternal(c, u, true)
+                    withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / validUrls.size) }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onProgress(-1f)
+                val wasActive = state.isDownloading
+                state.isDownloading = false
+                if (wasActive) {
+                    Toast.makeText(c, c.getString(R.string.toast_saved), Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: CancellationException) {
+            withContext(Dispatchers.Main) {
+                onProgress(-1f)
+                state.isDownloading = false
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                onProgress(-1f)
+                state.isDownloading = false
+                Toast.makeText(c, c.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
             }
         }
     }
 }
 
-// Внутренняя логика сохранения с проверкой хеша
-private fun saveImgInternal(c: Context, url: String): Int {
+private suspend fun saveImg(c: Context, url: String) {
+    withContext(Dispatchers.IO) {
+        val result = saveImgInternal(c, url, false)
+        withContext(Dispatchers.Main) {
+            when(result) {
+                1 -> Toast.makeText(c, c.getString(R.string.toast_saved), Toast.LENGTH_SHORT).show()
+                2 -> Toast.makeText(c, c.getString(R.string.toast_already_exists), Toast.LENGTH_SHORT).show()
+                else -> Toast.makeText(c, c.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
     return try {
         val bytes = URL(url).openStream().use { it.readBytes() }
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val fileName = "PT_$hash.jpg"
 
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val selection = "${MediaStore.Images.Media.DISPLAY_NAME} = ?"
-        val cursor = c.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, arrayOf(fileName), null)
+        val fileName = if (isBatch) "PT_${hash.take(8)}_${UUID.randomUUID().toString().take(4)}.jpg"
+        else "PT_${hash.take(12)}.jpg"
 
-        if (cursor != null && cursor.count > 0) {
-            cursor.close()
-            return 2 // Уже есть
+        if (!isBatch) {
+            val projection = arrayOf(MediaStore.Images.Media._ID)
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} = ?"
+            val cursor = c.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, arrayOf(fileName), null)
+            if (cursor != null && cursor.count > 0) {
+                cursor.close()
+                return 2
+            }
+            cursor?.close()
         }
-        cursor?.close()
 
         val v = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
@@ -471,24 +595,24 @@ private fun saveImgInternal(c: Context, url: String): Int {
         }
         c.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v)?.let { uri ->
             c.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-            1 // Успех
+            1
         } ?: 0
     } catch (e: Exception) { 0 }
 }
 
-private suspend fun downloadAllAsZip(c: Context, urls: List<String>, onProgress: (Float) -> Unit) {
+private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: ParserState, onProgress: (Float) -> Unit) {
+    state.isDownloading = true
     withContext(Dispatchers.IO) {
         try {
-            val v = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, "PT_Archive_${System.currentTimeMillis()}.zip")
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/PicsTok/archives")
-            }
-            val uri = c.contentResolver.insert(MediaStore.Files.getContentUri("external"), v)
-            uri?.let { target ->
-                c.contentResolver.openOutputStream(target)?.use { os ->
-                    ZipOutputStream(BufferedOutputStream(os)).use { zos ->
-                        urls.forEachIndexed { i, u ->
+            val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "PicsTok")
+            if (!directory.exists()) directory.mkdirs()
+
+            val outputFile = File(directory, "PT_Archive_${System.currentTimeMillis()}.zip")
+            val validUrls = urls.distinct()
+            FileOutputStream(outputFile).use { fos ->
+                ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
+                    validUrls.forEachIndexed { i, u ->
+                        if (state.isDownloading) {
                             try {
                                 val bytes = URL(u).openStream().use { it.readBytes() }
                                 if (bytes.isNotEmpty()) {
@@ -498,14 +622,31 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, onProgress:
                                     zos.closeEntry()
                                 }
                             } catch (e: Exception) {}
-                            withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / urls.size) }
+                            withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / validUrls.size) }
                         }
                     }
                 }
-                withContext(Dispatchers.Main) { onProgress(-1f); Toast.makeText(c, R.string.toast_saved, Toast.LENGTH_SHORT).show() }
+            }
+
+            if (state.isDownloading) {
+                MediaScannerConnection.scanFile(c, arrayOf(outputFile.absolutePath), arrayOf("application/zip")) { _, _ -> }
+                withContext(Dispatchers.Main) {
+                    onProgress(-1f)
+                    state.isDownloading = false
+                    Toast.makeText(c, c.getString(R.string.toast_saved), Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: CancellationException) {
+            withContext(Dispatchers.Main) {
+                onProgress(-1f)
+                state.isDownloading = false
             }
         } catch (e: Exception) {
-            withContext(Dispatchers.Main) { onProgress(-1f); Toast.makeText(c, "Zip Error", Toast.LENGTH_SHORT).show() }
+            withContext(Dispatchers.Main) {
+                onProgress(-1f)
+                state.isDownloading = false
+                Toast.makeText(c, c.getString(R.string.zip_error), Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
@@ -516,5 +657,5 @@ fun shareImage(context: Context, uri: Uri) {
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "Share Image"))
+    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_image_title)))
 }

@@ -33,4 +33,9 @@
     <string name="gallery_selected_count">Selected: %1$d</string>
     <string name="error_download">Download while error</string>
     <string name="toast_already_exists">Photo already exist</string>
+    <string name="download_cancelled">Download cancelled by user</string>
+    <string name="zip_error">Error creating archive</string>
+    <string name="share_image_title">Share image</string>
+    <string name="confirm">Yes</string>
+    <string name="zip_cancelled">Create archive cancelled</string>
 </resources>

@@ -33,4 +33,9 @@
     <string name="gallery_selected_count">Выбрано: %1$d</string>
     <string name="error_download">Ошибка загрузки</string>
     <string name="toast_already_exists">Фото уже есть в галерее</string>
+    <string name="download_cancelled">Загрузка отменена</string>
+    <string name="zip_error">Ошибка создания архива</string>
+    <string name="share_image_title">Поделиться изображением</string>
+    <string name="confirm">Да</string>
+    <string name="zip_cancelled">Создание архива отменено</string>
 </resources>
