@@ -2,41 +2,58 @@
     <string name="app_name">PicsTok</string>
     <string name="tab_parser">Парсер</string>
     <string name="tab_gallery">Галерея</string>
+    <string name="tab_archives">Архивы</string>
+
     <string name="btn_start">Найти картинки</string>
     <string name="btn_download_all">Скачать все</string>
     <string name="btn_zip">В ZIP архив</string>
     <string name="btn_clear_cache">Очистить кэш</string>
     <string name="btn_delete_selected">Удалить (%1$d)</string>
+    <string name="btn_select_all">Всё</string>
     <string name="btn_cancel">Отмена</string>
+    <string name="btn_share">Поделиться</string>
+
     <string name="input_label">Вставьте ссылку TikTok</string>
-    <string name="parse_progress">Обработано: %1$d | Найдено: %2$d</string>
+    <string name="parse_progress">Просмотрено комментов: %1$d | Найдено картинок: %2$d</string>
+    <string name="error_empty_link">Сначала вставьте ссылку</string>
+
     <string name="dialog_download_title">Скачать все?</string>
     <string name="dialog_download_text">%1$d картинок будут сохранены в галерею.</string>
     <string name="dialog_zip_title">Создать ZIP?</string>
     <string name="dialog_zip_text">Все найденные картинки будут упакованы в один архив.</string>
+
     <string name="toast_saved">Сохранено!</string>
     <string name="toast_deleted">Удалено</string>
     <string name="gallery_empty">Тут пока пусто</string>
+    <string name="archives_empty">Архивов нет</string>
+
     <string name="dialog_delete_title">Удалить?</string>
-    <string name="dialog_delete_text">Удалить выбранные картинки (%1$d шт.) безвозвратно?</string>
+    <string name="dialog_delete_text">Удалить выбранные объекты (%1$d шт.)? \nОсвободится: %2$s</string>
     <string name="btn_confirm_delete">Удалить</string>
+
     <string name="settings_title">Настройки</string>
     <string name="theme_label">Тема</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Темная</string>
     <string name="theme_system">Системная</string>
-    <string name="cache_occupied">Занято кэшем: %1$s</string>
+
+    <string name="cache_occupied">Кэш: %1$s</string>
     <string name="cache_cleared">Кэш очищен</string>
     <string name="material_you_label">Material You</string>
     <string name="material_you_desc">Цвета системы (Android 12+)</string>
+
     <string name="processing_label">Обработка…</string>
-    <string name="gallery_selected_count">Выбрано: %1$d</string>
+    <string name="gallery_selected_count">Выбрано: %1$d (%2$s)</string>
+    <string name="gallery_total_stats">Всего: %1$d | Занято: %2$s</string>
+
     <string name="error_download">Ошибка загрузки</string>
     <string name="toast_already_exists">Картинка уже есть в галерее</string>
     <string name="download_cancelled">Загрузка отменена</string>
     <string name="zip_error">Ошибка создания архива</string>
-    <string name="share_image_title">Поделиться изображением</string>
-    <string name="confirm">Да</string>
     <string name="zip_cancelled">Создание архива отменено</string>
-    <string name="error_empty_link">Сначала вставьте ссылку</string>
+    <string name="share_image_title">Поделиться</string>
+    <string name="confirm">Да</string>
+
+    <string name="share_archive_title">Поделиться архивом</string>
+    <string name="share_error">Ошибка отправки файла</string>
 </resources>

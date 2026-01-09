@@ -20,14 +20,15 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun PicsTokTheme(
-    themeMode: String = "Системная",
+    themeMode: String = "System", // Используем английский ключ по умолчанию
     useDynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    // Логика выбора темы теперь опирается на фиксированные строковые ключи
     val darkTheme = when (themeMode) {
-        "Светлая" -> false
-        "Темная" -> true
-        else -> isSystemInDarkTheme()
+        "Light" -> false
+        "Dark" -> true
+        else -> isSystemInDarkTheme() // "System" или любой другой вариант
     }
 
     val colorScheme = when {

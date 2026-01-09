@@ -2,41 +2,57 @@
     <string name="app_name">PicsTok</string>
     <string name="tab_parser">Parser</string>
     <string name="tab_gallery">Gallery</string>
-    <string name="btn_start">Find Pictures</string>
+    <string name="tab_archives">Archives</string>
+
+    <string name="btn_start">Find Images</string>
     <string name="btn_download_all">Download All</string>
     <string name="btn_zip">To ZIP Archive</string>
     <string name="btn_clear_cache">Clear Cache</string>
     <string name="btn_delete_selected">Delete (%1$d)</string>
+    <string name="btn_select_all">Select All</string>
     <string name="btn_cancel">Cancel</string>
+    <string name="btn_share">Share</string>
+
     <string name="input_label">Paste TikTok Link</string>
-    <string name="parse_progress">Processed: %1$d | Found: %2$d</string>
-    <string name="dialog_download_title">Download All?</string>
-    <string name="dialog_download_text">%1$d pictures will be saved to your gallery.</string>
+    <string name="parse_progress">Comments scanned: %1$d | Images found: %2$d</string>
+    <string name="error_empty_link">Paste a link first</string>
+
+    <string name="dialog_download_title">Download all?</string>
+    <string name="dialog_download_text">%1$d images will be saved to the gallery.</string>
     <string name="dialog_zip_title">Create ZIP?</string>
-    <string name="dialog_zip_text">All found pictures will be packed into a single archive.</string>
+    <string name="dialog_zip_text">All found images will be packed into one archive.</string>
+
     <string name="toast_saved">Saved!</string>
     <string name="toast_deleted">Deleted</string>
-    <string name="gallery_empty">Nothing here yet</string>
+    <string name="gallery_empty">It\'s empty here</string>
+    <string name="archives_empty">No archives found</string>
+
     <string name="dialog_delete_title">Delete?</string>
-    <string name="dialog_delete_text">Delete %1$d pictures forever?</string>
+    <string name="dialog_delete_text">Delete selected items (%1$d)? \nSpace freed: %2$s</string>
     <string name="btn_confirm_delete">Delete</string>
+
     <string name="settings_title">Settings</string>
     <string name="theme_label">Theme</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_system">System</string>
-    <string name="cache_occupied">Cache occupied: %1$s</string>
+
+    <string name="cache_occupied">Cache: %1$s</string>
     <string name="cache_cleared">Cache cleared</string>
     <string name="material_you_label">Material You</string>
-    <string name="material_you_desc">Use system colors</string>
-    <string name="processing_label">Processing...</string>
-    <string name="gallery_selected_count">Selected: %1$d</string>
-    <string name="error_download">Download while error</string>
-    <string name="toast_already_exists">Picture already exist</string>
-    <string name="download_cancelled">Download cancelled by user</string>
-    <string name="zip_error">Error creating archive</string>
-    <string name="share_image_title">Share image</string>
+    <string name="material_you_desc">System colors (Android 12+)</string>
+
+    <string name="processing_label">Processing…</string>
+    <string name="gallery_selected_count">Selected: %1$d (%2$s)</string>
+    <string name="gallery_total_stats">Total: %1$d | Used: %2$s</string>
+
+    <string name="error_download">Download error</string>
+    <string name="toast_already_exists">Image already exists in gallery</string>
+    <string name="download_cancelled">Download cancelled</string>
+    <string name="zip_error">Archive creation error</string>
+    <string name="zip_cancelled">Archive creation cancelled</string>
+    <string name="share_image_title">Share</string>
     <string name="confirm">Yes</string>
-    <string name="zip_cancelled">Create archive cancelled</string>
-    <string name="error_empty_link">First, insert the link</string>
+    <string name="share_archive_title">Share archive</string>
+    <string name="share_error">File sharing error</string>
 </resources>
