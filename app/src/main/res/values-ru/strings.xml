@@ -45,9 +45,10 @@
     <string name="material_you_desc">Цвета системы (Android 12+)</string>
 
     <string name="processing_label">Обработка…</string>
-    <string name="gallery_selected_count">Выбрано: %1$d (%2$s)</string>
-    <string name="gallery_selected_count_two_lines">Выбрано: %1$d\nРазмер: %2$s</string>
+    <string name="gallery_selected_count_items">Выбрано: %d</string>
+    <string name="gallery_selected_count_size">Размер: %s</string>
     <string name="gallery_total_stats">Всего: %1$d | Занято: %2$s</string>
+    <string name="zip_no_valid_images">Нет подходящих картинок для архива</string>
 
     <string name="error_download">Ошибка загрузки</string>
     <string name="toast_already_exists">Картинка уже есть в галерее</string>

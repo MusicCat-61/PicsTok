@@ -177,12 +177,19 @@ fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            // ИСПРАВЛЕНО: возвращаем одну строку с двумя параметрами
+                            // ИСПРАВЛЕННЫЙ КОД: используем два отдельных Text с разными строками
                             Text(
-                                stringResource(R.string.gallery_selected_count, selectedCount, formatFileSize(selectedSize)),
+                                stringResource(R.string.gallery_selected_count_items, selectedCount),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = 18.sp
+                            )
+                            Text(
+                                stringResource(R.string.gallery_selected_count_size, formatFileSize(selectedSize)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 16.sp
                             )
                         }
                     },
@@ -321,6 +328,8 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    var pollingJob by remember { mutableStateOf<Job?>(null) }
+
     fun tryPasteFromClipboard() {
         if (state.url.isEmpty() && !state.isWorking && !state.isFinished) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -334,13 +343,73 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
         }
     }
 
+    fun startParsing(url: String) {
+        if (url.isBlank()) {
+            Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        state.isWorking = true
+        state.isFinished = false
+        state.resultUrls = emptyList()
+        state.processedCount = 0
+        state.foundCount = 0
+
+        pollingJob?.cancel()
+
+        pollingJob = scope.launch {
+            try {
+                val response = api.startParse(mapOf("url" to url.trim()))
+                val taskId = response["task_id"] ?: ""
+
+                // Периодический опрос статуса
+                while (state.isWorking && isActive) {
+                    val res = withContext(Dispatchers.IO) {
+                        api.getStatus(taskId)
+                    }
+
+                    val status = res["status"] as? String
+                    val processed = (res["processed_comments"] as? Number)?.toInt() ?: 0
+                    val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+
+                    // Фильтруем пустые/некорректные URL
+                    val validUrls = urls.filter {
+                        it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://"))
+                    }.distinct()
+
+                    // ОБНОВЛЯЕМ В РЕАЛЬНОМ ВРЕМЕНИ
+                    state.processedCount = processed
+                    state.resultUrls = validUrls
+                    state.foundCount = validUrls.size
+
+                    if (status == "completed") {
+                        state.isWorking = false
+                        state.isFinished = true
+                        state.url = ""
+                        break
+                    }
+
+                    delay(1000) // Опрашиваем каждую секунду
+                }
+            } catch (e: Exception) {
+                state.isWorking = false
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) { tryPasteFromClipboard() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) tryPasteFromClipboard()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            pollingJob?.cancel()
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -356,51 +425,26 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     )
                     Spacer(Modifier.height(16.dp))
                     Button(
-                        onClick = {
-                            if (state.url.isBlank()) {
-                                Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            state.isWorking = true
-                            state.isFinished = false
-                            state.resultUrls = emptyList()
-                            state.processedCount = 0
-                            state.foundCount = 0
-                            scope.launch {
-                                try {
-                                    val tid = api.startParse(mapOf("url" to state.url.trim()))["task_id"] ?: ""
-                                    while (state.isWorking) {
-                                        val res = api.getStatus(tid)
-                                        val status = res["status"] as? String
-                                        if (status == "completed") {
-                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
-                                            state.resultUrls = urls.distinct()
-                                            state.foundCount = state.resultUrls.size
-                                            state.isWorking = false
-                                            state.isFinished = true
-                                            state.url = ""
-                                        } else {
-                                            state.processedCount = (res["processed_comments"] as? Number)?.toInt() ?: 0
-                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
-                                            state.resultUrls = urls.distinct()
-                                            state.foundCount = state.resultUrls.size
-                                        }
-                                        delay(1500)
-                                    }
-                                } catch (e: Exception) {
-                                    state.isWorking = false
-                                    Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
+                        onClick = { startParsing(state.url) },
                         enabled = state.url.isNotBlank(),
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) { Text(stringResource(R.string.btn_start)) }
                 }
             } else {
-                // Возвращаем старую строку прогресса
-                Text(stringResource(R.string.parse_progress_comments, state.processedCount), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(stringResource(R.string.parse_progress_images, state.foundCount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                // ТЕПЕРЬ ОБНОВЛЯЕТСЯ В РЕАЛЬНОМ ВРЕМЕНИ
+                Column {
+                    Text(
+                        stringResource(R.string.parse_progress_comments, state.processedCount),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        stringResource(R.string.parse_progress_images, state.foundCount),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 if (state.isWorking) {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
@@ -410,10 +454,19 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     columns = GridCells.Fixed(3),
                     modifier = Modifier.weight(1f).padding(top = 8.dp)
                 ) {
+                    // Используем отфильтрованные URL
                     items(state.resultUrls) { url ->
                         Box(Modifier.padding(2.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) {
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                                model = ImageRequest.Builder(context)
+                                    .data(url)
+                                    .crossfade(true)
+                                    .size(200, 200)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .placeholder(R.drawable.ic_image_placeholder) // Ваши иконки
+                                    .error(R.drawable.ic_broken_image) // Ваши иконки
+                                    .build(),
                                 contentDescription = null,
                                 imageLoader = loader,
                                 modifier = Modifier.fillMaxSize(),
@@ -466,6 +519,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                             state.url = ""
                             state.processedCount = 0
                             state.foundCount = 0
+                            pollingJob?.cancel()
                         },
                         modifier = Modifier.size(64.dp),
                         colors = IconButtonDefaults.outlinedIconButtonColors(contentColor = MaterialTheme.colorScheme.error),
@@ -601,7 +655,7 @@ fun GalleryScreen(
             val totalSize = items.sumOf { it.size }
             Text(
                 text = stringResource(R.string.gallery_total_stats, items.size, formatFileSize(totalSize)),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.CenterHorizontally)
             )
@@ -800,7 +854,7 @@ fun ArchivesScreen(
             val totalSize = items.sumOf { it.file.length() }
             Text(
                 text = stringResource(R.string.gallery_total_stats, items.size, formatFileSize(totalSize)),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.CenterHorizontally)
             )
@@ -1025,6 +1079,12 @@ private suspend fun saveImg(c: Context, url: String) {
 private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
     return try {
         val bytes = URL(url).openStream().use { it.readBytes() }
+
+        // ФИЛЬТР: проверяем, что картинка не пустая
+        if (bytes.isEmpty() || bytes.size < 1024) { // Менее 1KB - вероятно пустая
+            return 0
+        }
+
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val fileName = if (isBatch) "PT_${hash.take(8)}_${UUID.randomUUID().toString().take(4)}.jpg" else "PT_${hash.take(12)}.jpg"
 
@@ -1038,12 +1098,15 @@ private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
             put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PicsTok")
+            put(MediaStore.Images.Media.SIZE, bytes.size)
         }
         c.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v)?.let { uri ->
             c.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
             1
         } ?: 0
-    } catch (e: Exception) { 0 }
+    } catch (e: Exception) {
+        0
+    }
 }
 
 private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: ParserState, onProgress: (Float) -> Unit) {
@@ -1054,24 +1117,37 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
             if (!directory.exists()) directory.mkdirs()
             val outputFile = File(directory, "PT_Archive_${System.currentTimeMillis()}.zip")
             val validUrls = urls.distinct()
+
             FileOutputStream(outputFile).use { fos ->
                 ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
+                    var savedCount = 0
                     validUrls.forEachIndexed { i, u ->
                         if (state.isDownloading) {
                             try {
                                 val bytes = URL(u).openStream().use { it.readBytes() }
-                                if (bytes.isNotEmpty()) {
+
+                                // ФИЛЬТР: проверяем, что картинка не пустая (по аналогии с saveImgInternal)
+                                if (bytes.isNotEmpty() && bytes.size >= 1024) { // Менее 1KB - вероятно пустая
                                     val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }.take(8)
-                                    zos.putNextEntry(ZipEntry("img_${i}_$hash.jpg"))
+                                    zos.putNextEntry(ZipEntry("img_${savedCount}_$hash.jpg"))
                                     zos.write(bytes)
                                     zos.closeEntry()
+                                    savedCount++
                                 }
-                            } catch (e: Exception) {}
+                            } catch (e: Exception) {
+                                // Игнорируем ошибки загрузки отдельных картинок
+                            }
                             withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / validUrls.size) }
                         }
                     }
+
+                    // Если не было сохранено ни одной картинки
+                    if (savedCount == 0) {
+                        throw IOException("No valid images found for archive")
+                    }
                 }
             }
+
             if (state.isDownloading) {
                 MediaScannerConnection.scanFile(c, arrayOf(outputFile.absolutePath), arrayOf("application/zip")) { _, _ -> }
                 withContext(Dispatchers.Main) {
@@ -1084,7 +1160,14 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
             withContext(Dispatchers.Main) {
                 onProgress(-1f)
                 state.isDownloading = false
-                Toast.makeText(c, c.getString(R.string.zip_error), Toast.LENGTH_SHORT).show()
+
+                // Более информативное сообщение об ошибке
+                val errorMessage = if (e.message?.contains("No valid images") == true) {
+                    c.getString(R.string.zip_no_valid_images)
+                } else {
+                    c.getString(R.string.zip_error)
+                }
+                Toast.makeText(c, errorMessage, Toast.LENGTH_SHORT).show()
             }
         }
     }

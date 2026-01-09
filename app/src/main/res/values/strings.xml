@@ -44,8 +44,10 @@
     <string name="material_you_desc">System colors (Android 12+)</string>
 
     <string name="processing_label">Processing…</string>
-    <string name="gallery_selected_count">Selected: %1$d (%2$s)</string>
+    <string name="gallery_selected_count_items">Selected: %d</string>
+    <string name="gallery_selected_count_size">Size: %s</string>
     <string name="gallery_total_stats">Total: %1$d | Used: %2$s</string>
+    <string name="zip_no_valid_images">No valid images for archive</string>
 
     <string name="error_download">Download error</string>
     <string name="toast_already_exists">Image already exists in gallery</string>
