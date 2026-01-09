@@ -45,6 +45,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.io.*
+import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
@@ -177,12 +178,18 @@ fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            // ИСПРАВЛЕНО: возвращаем одну строку с двумя параметрами
                             Text(
-                                stringResource(R.string.gallery_selected_count, selectedCount, formatFileSize(selectedSize)),
+                                stringResource(R.string.gallery_selected_count_items, selectedCount),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 lineHeight = 18.sp
+                            )
+                            Text(
+                                stringResource(R.string.gallery_selected_count_size, formatFileSize(selectedSize)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 16.sp
                             )
                         }
                     },
@@ -321,6 +328,40 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    var pollingJob by remember { mutableStateOf<Job?>(null) }
+    var selectedUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var validImageUrls by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showNothingSelectedDialog by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Кэш для уже проверенных URL
+    var checkedUrlsCache by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // Список поддерживаемых расширений
+    val supportedExtensions = listOf(".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".jfif")
+
+    // ВАЖНО: Сохраняем состояние при уничтожении
+    DisposableEffect(Unit) {
+        onDispose {
+            // Сохраняем текущие данные в state для восстановления
+            if (validImageUrls.isNotEmpty()) {
+                state.resultUrls = validImageUrls
+                state.foundCount = validImageUrls.size
+            }
+        }
+    }
+
+    // Восстанавливаем состояние при возврате на вкладку
+    LaunchedEffect(state.currentTab) {
+        if (state.currentTab == 0 && state.isFinished && validImageUrls.isEmpty()) {
+            // Восстанавливаем из state если есть данные
+            if (state.resultUrls.isNotEmpty()) {
+                validImageUrls = state.resultUrls
+            }
+        }
+    }
+
     fun tryPasteFromClipboard() {
         if (state.url.isEmpty() && !state.isWorking && !state.isFinished) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -334,18 +375,225 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
         }
     }
 
+    fun startParsing(url: String) {
+        if (url.isBlank()) {
+            Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        state.isWorking = true
+        state.isFinished = false
+        state.resultUrls = emptyList()
+        state.processedCount = 0
+        state.foundCount = 0
+        validImageUrls = emptyList()
+        selectedUrls = emptySet()
+        isSelectionMode = false
+        showNothingSelectedDialog = false
+        checkedUrlsCache = emptySet()
+
+        pollingJob?.cancel()
+
+        pollingJob = scope.launch {
+            try {
+                val response = api.startParse(mapOf("url" to url.trim()))
+                val taskId = response["task_id"] ?: ""
+
+                // Периодический опрос статуса
+                while (state.isWorking && isActive) {
+                    val res = withContext(Dispatchers.IO) {
+                        api.getStatus(taskId)
+                    }
+
+                    val status = res["status"] as? String
+                    val processed = (res["processed_comments"] as? Number)?.toInt() ?: 0
+                    val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+
+                    // Фильтруем пустые/некорректные URL
+                    val validUrls = urls.filter {
+                        it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://"))
+                    }.distinct()
+
+                    // Сохраняем ВСЕ найденные URL (для отображения в реальном времени)
+                    state.resultUrls = validUrls
+                    state.processedCount = processed
+
+                    // Проверяем только НОВЫЕ URL, которых еще нет в кэше
+                    val newUrls = validUrls.filter { it !in checkedUrlsCache }
+
+                    if (newUrls.isNotEmpty()) {
+                        // Обновляем кэш СРАЗУ (чтобы не проверять повторно)
+                        checkedUrlsCache = checkedUrlsCache + newUrls
+
+                        // Проверяем новые URL асинхронно и параллельно
+                        val chunkResults = newUrls.chunked(5).map { chunk ->
+                            async(Dispatchers.IO) {
+                                chunk.filter { url ->
+                                    // 1. Проверяем расширение файла
+                                    val lowerUrl = url.lowercase()
+                                    val hasSupportedExtension = listOf(
+                                        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
+                                        ".jfif", ".heic", ".heif", ".image"
+                                    ).any { ext -> lowerUrl.contains(ext) }
+
+                                    if (!hasSupportedExtension) {
+                                        return@filter false
+                                    }
+
+                                    // 2. Пытаемся загрузить заголовок (быстрая проверка)
+                                    try {
+                                        val connection = URL(url).openConnection() as HttpURLConnection
+                                        connection.requestMethod = "HEAD"
+                                        connection.connectTimeout = 1500
+                                        connection.readTimeout = 1500
+                                        connection.connect()
+
+                                        val contentType = connection.contentType ?: ""
+                                        val contentLength = connection.contentLength
+
+                                        connection.disconnect()
+
+                                        // Проверяем что это изображение и не пустое
+                                        contentType.startsWith("image/") && contentLength > 100
+                                    } catch (e: Exception) {
+                                        // Если HEAD не работает, пробуем GET первых байтов
+                                        try {
+                                            val connection = URL(url).openConnection() as HttpURLConnection
+                                            connection.connectTimeout = 2000
+                                            connection.readTimeout = 2000
+                                            connection.connect()
+
+                                            val contentType = connection.contentType ?: ""
+                                            val input = connection.inputStream
+                                            val buffer = ByteArray(128) // Читаем только 128 байт
+                                            val bytesRead = input.read(buffer)
+                                            input.close()
+                                            connection.disconnect()
+
+                                            contentType.startsWith("image/") && bytesRead > 0
+                                        } catch (e2: Exception) {
+                                            false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Собираем все результаты
+                        chunkResults.forEach { deferred ->
+                            val validChunk = deferred.await()
+                            if (validChunk.isNotEmpty()) {
+                                // ОБНОВЛЯЕМ UI ПОСЛЕ КАЖДОГО ЧАНКА
+                                withContext(Dispatchers.Main) {
+                                    validImageUrls = validImageUrls + validChunk
+                                    state.foundCount = validImageUrls.size
+                                }
+                            }
+                        }
+                    }
+
+                    if (status == "completed") {
+                        // После завершения делаем финальную проверку всех оставшихся картинок
+                        val finalUrls = validUrls.filter { it !in checkedUrlsCache }
+                        if (finalUrls.isNotEmpty()) {
+                            val finalValidUrls = finalUrls.filter { url ->
+                                try {
+                                    val connection = URL(url).openConnection() as HttpURLConnection
+                                    connection.requestMethod = "HEAD"
+                                    connection.connectTimeout = 2000
+                                    connection.readTimeout = 2000
+                                    connection.connect()
+
+                                    val contentType = connection.contentType ?: ""
+                                    val contentLength = connection.contentLength
+
+                                    connection.disconnect()
+
+                                    contentType.startsWith("image/") && contentLength > 100
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                validImageUrls = validImageUrls + finalValidUrls
+                                state.foundCount = validImageUrls.size
+                            }
+                        }
+
+                        state.isWorking = false
+                        state.isFinished = true
+                        state.url = ""
+                        break
+                    }
+
+                    delay(1000) // Уменьшил задержку до 1 секунды
+                }
+            } catch (e: Exception) {
+                state.isWorking = false
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun executeDownload(isZip: Boolean) {
+        val urlsToProcess = when {
+            // Если в режиме выделения и есть выбранные
+            isSelectionMode && selectedUrls.isNotEmpty() -> selectedUrls.toList()
+            // Если в режиме выделения, но ничего не выбрано - скачиваем все
+            isSelectionMode -> validImageUrls
+            // Если не в режиме выделения - скачиваем все
+            else -> validImageUrls
+        }
+
+        // Немедленное выполнение если есть что скачивать
+        if (urlsToProcess.isEmpty()) {
+            Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (isZip) {
+            state.isZipOperation = true
+            state.currentDownloadJob?.cancel()
+            state.currentDownloadJob = scope.launch {
+                downloadAllAsZip(context, urlsToProcess, state) { state.downloadProgress = it }
+            }
+        } else {
+            state.isZipOperation = false
+            state.currentDownloadJob?.cancel()
+            state.currentDownloadJob = scope.launch {
+                saveAll(context, urlsToProcess, state) { state.downloadProgress = it }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) { tryPasteFromClipboard() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) tryPasteFromClipboard()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            pollingJob?.cancel()
+        }
+    }
+
+    // Сохраняем состояние при переключении вкладок
+    LaunchedEffect(state.currentTab) {
+        if (state.currentTab == 0) {
+            // При возврате на вкладку парсера восстанавливаем состояние
+            if (state.isFinished) {
+                // Если парсинг был завершен, показываем результаты
+            }
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
-            if (state.resultUrls.isEmpty() && !state.isWorking) {
+            if (validImageUrls.isEmpty() && !state.isWorking && !state.isFinished) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     OutlinedTextField(
                         value = state.url,
@@ -356,51 +604,36 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     )
                     Spacer(Modifier.height(16.dp))
                     Button(
-                        onClick = {
-                            if (state.url.isBlank()) {
-                                Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            state.isWorking = true
-                            state.isFinished = false
-                            state.resultUrls = emptyList()
-                            state.processedCount = 0
-                            state.foundCount = 0
-                            scope.launch {
-                                try {
-                                    val tid = api.startParse(mapOf("url" to state.url.trim()))["task_id"] ?: ""
-                                    while (state.isWorking) {
-                                        val res = api.getStatus(tid)
-                                        val status = res["status"] as? String
-                                        if (status == "completed") {
-                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
-                                            state.resultUrls = urls.distinct()
-                                            state.foundCount = state.resultUrls.size
-                                            state.isWorking = false
-                                            state.isFinished = true
-                                            state.url = ""
-                                        } else {
-                                            state.processedCount = (res["processed_comments"] as? Number)?.toInt() ?: 0
-                                            val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
-                                            state.resultUrls = urls.distinct()
-                                            state.foundCount = state.resultUrls.size
-                                        }
-                                        delay(1500)
-                                    }
-                                } catch (e: Exception) {
-                                    state.isWorking = false
-                                    Toast.makeText(context, context.getString(R.string.error_download), Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
+                        onClick = { startParsing(state.url) },
                         enabled = state.url.isNotBlank(),
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) { Text(stringResource(R.string.btn_start)) }
                 }
             } else {
-                // Возвращаем старую строку прогресса
-                Text(stringResource(R.string.parse_progress_comments, state.processedCount), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(stringResource(R.string.parse_progress_images, state.foundCount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                // Показываем статистику
+                Column {
+                    Text(
+                        stringResource(R.string.parse_progress_comments, state.processedCount),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        stringResource(R.string.parse_progress_images, state.foundCount),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    if (state.isWorking && state.foundCount == 0) {
+                        Text(
+                            "Проверяем картинки...",
+                            fontWeight = FontWeight.Normal,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
 
                 if (state.isWorking) {
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
@@ -410,20 +643,72 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     columns = GridCells.Fixed(3),
                     modifier = Modifier.weight(1f).padding(top = 8.dp)
                 ) {
-                    items(state.resultUrls) { url ->
-                        Box(Modifier.padding(2.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) {
+                    // Используем только пригодные URL
+                    items(validImageUrls) { url ->
+                        val isSelected = selectedUrls.contains(url)
+                        Box(
+                            Modifier
+                                .padding(2.dp)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    if (isSelectionMode) {
+                                        selectedUrls =
+                                            if (isSelected) selectedUrls - url else selectedUrls + url
+                                    }
+                                }
+                        ) {
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                                model = ImageRequest.Builder(context)
+                                    .data(url)
+                                    .crossfade(true)
+                                    .size(200, 200)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .placeholder(R.drawable.ic_image_placeholder)
+                                    .error(R.drawable.ic_broken_image)
+                                    .allowHardware(false) // Для лучшей совместимости
+                                    .build(),
                                 contentDescription = null,
                                 imageLoader = loader,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                onError = { // Обработка ошибок загрузки
+                                    // Можно логировать ошибку
+                                }
                             )
-                            IconButton(
-                                onClick = { scope.launch { saveImg(context, url) } },
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(32.dp).background(Color.Black.copy(0.5f), CircleShape)
-                            ) {
-                                Icon(painterResource(R.drawable.ic_download), null, tint = Color.White, modifier = Modifier.size(18.dp))
+
+                            // Показываем кнопку скачивания только если не в режиме выбора
+                            if (!isSelectionMode) {
+                                IconButton(
+                                    onClick = { scope.launch { saveImg(context, url) } },
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                                        .size(32.dp).background(Color.Black.copy(0.5f), CircleShape)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_download),
+                                        null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // Показываем выделение если в режиме выбора
+                            if (isSelected) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.primary.copy(0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_check),
+                                        null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -438,64 +723,263 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                 tonalElevation = 8.dp,
                 shadowElevation = 16.dp
             ) {
-                Row(
-                    Modifier.padding(12.dp).navigationBarsPadding(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(
-                            onClick = { state.showDownloadAllDialog = true },
-                            modifier = Modifier.fillMaxWidth()
+                if (isSelectionMode) {
+                    // Режим выделения - показываем выбранное количество
+                    Column(
+                        Modifier.padding(12.dp).navigationBarsPadding(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Показываем сколько выбрано
+                        Text(
+                            text = stringResource(R.string.selection_count, selectedUrls.size),
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                                .padding(bottom = 8.dp),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(painterResource(R.drawable.ic_download), null, Modifier.size(18.dp))
-                            Text(stringResource(R.string.btn_download_all), fontSize = 11.sp)
+                            Button(
+                                onClick = {
+                                    state.showDownloadAllDialog = true
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_download),
+                                    null,
+                                    Modifier.size(16.dp)
+                                )
+                                Text(stringResource(R.string.btn_download), fontSize = 14.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    state.showZipDialog = true
+                                },
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_archive),
+                                    null,
+                                    Modifier.size(16.dp)
+                                )
+                                Text(stringResource(R.string.btn_zip_short), fontSize = 14.sp)
+                            }
                         }
+                        // Кнопка отмены выделения
                         Button(
-                            onClick = { state.showZipDialog = true },
-                            modifier = Modifier.fillMaxWidth()
+                            onClick = {
+                                isSelectionMode = false
+                                selectedUrls = emptySet() // Снимаем все выделения
+                            },
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         ) {
-                            Icon(painterResource(R.drawable.ic_archive), null, Modifier.size(18.dp))
-                            Text(stringResource(R.string.btn_zip), fontSize = 11.sp)
+                            Text(stringResource(R.string.btn_cancel), fontSize = 12.sp)
                         }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    OutlinedIconButton(
-                        onClick = {
-                            state.resultUrls = emptyList()
-                            state.isFinished = false
-                            state.url = ""
-                            state.processedCount = 0
-                            state.foundCount = 0
-                        },
-                        modifier = Modifier.size(64.dp),
-                        colors = IconButtonDefaults.outlinedIconButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.error)
+                } else {
+                    // Обычный режим (не выделение)
+                    Row(
+                        Modifier.padding(12.dp).navigationBarsPadding(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(painterResource(R.drawable.ic_clear), null, Modifier.size(32.dp))
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        // Включаем режим выделения (НЕ выделяем все автоматически)
+                                        isSelectionMode = true
+                                        selectedUrls = emptySet() // Начинаем с пустого выбора
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_select_all),
+                                        null,
+                                        Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        stringResource(R.string.btn_selection_mode),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Button(
+                                    onClick = { state.showDownloadAllDialog = true },
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_download),
+                                        null,
+                                        Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        stringResource(R.string.btn_download_all),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { state.showZipDialog = true },
+                                    modifier = Modifier.weight(1f).height(48.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_archive),
+                                        null,
+                                        Modifier.size(18.dp)
+                                    )
+                                    Text(stringResource(R.string.btn_zip), fontSize = 14.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        state.resultUrls = emptyList()
+                                        state.isFinished = false
+                                        state.url = ""
+                                        state.processedCount = 0
+                                        state.foundCount = 0
+                                        pollingJob?.cancel()
+                                        validImageUrls = emptyList()
+                                        selectedUrls = emptySet()
+                                        isSelectionMode = false
+                                        checkedUrlsCache = emptySet()
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_clear),
+                                        null,
+                                        Modifier.size(18.dp)
+                                    )
+                                    Text(stringResource(R.string.btn_cancel), fontSize = 14.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    if (state.showDownloadAllDialog || state.showZipDialog) {
-        val isZip = state.showZipDialog
+
+    if (state.showDownloadAllDialog) {
         AlertDialog(
-            onDismissRequest = { if(isZip) state.showZipDialog = false else state.showDownloadAllDialog = false },
-            title = { Text(stringResource(if(isZip) R.string.dialog_zip_title else R.string.dialog_download_title)) },
-            text = { Text(stringResource(if(isZip) R.string.dialog_zip_text else R.string.dialog_download_text, state.resultUrls.size)) },
+            onDismissRequest = { state.showDownloadAllDialog = false },
+            title = {
+                val titleRes = when {
+                    isSelectionMode && selectedUrls.isNotEmpty() -> R.string.dialog_download_selected_title
+                    isSelectionMode -> R.string.dialog_nothing_selected_title_selection
+                    else -> R.string.dialog_download_title
+                }
+                Text(stringResource(titleRes))
+            },
+            text = {
+                val (textRes, count) = when {
+                    isSelectionMode && selectedUrls.isNotEmpty() -> {
+                        Pair(R.string.dialog_download_selected_text, selectedUrls.size)
+                    }
+                    isSelectionMode -> {
+                        Pair(R.string.dialog_nothing_selected_text_selection, validImageUrls.size)
+                    }
+                    else -> {
+                        Pair(R.string.dialog_download_text, validImageUrls.size)
+                    }
+                }
+                Text(stringResource(textRes, count))
+            },
             confirmButton = {
                 Button(onClick = {
-                    state.isZipOperation = isZip
-                    if(isZip) state.showZipDialog = false else state.showDownloadAllDialog = false
-                    state.currentDownloadJob?.cancel()
-                    state.currentDownloadJob = scope.launch {
-                        if (isZip) downloadAllAsZip(context, state.resultUrls, state) { state.downloadProgress = it }
-                        else saveAll(context, state.resultUrls, state) { state.downloadProgress = it }
-                    }
+                    state.showDownloadAllDialog = false
+                    executeDownload(isZip = false)
                 }) { Text(stringResource(R.string.confirm)) }
             },
-            dismissButton = { TextButton(onClick = { if(isZip) state.showZipDialog = false else state.showDownloadAllDialog = false }) { Text(stringResource(R.string.btn_cancel)) } }
+            dismissButton = {
+                TextButton(onClick = { state.showDownloadAllDialog = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        )
+    }
+
+    if (state.showZipDialog) {
+        AlertDialog(
+            onDismissRequest = { state.showZipDialog = false },
+            title = {
+                val titleRes = when {
+                    isSelectionMode && selectedUrls.isNotEmpty() -> R.string.dialog_zip_selected_title
+                    isSelectionMode -> R.string.dialog_nothing_selected_title_selection
+                    else -> R.string.dialog_zip_title
+                }
+                Text(stringResource(titleRes))
+            },
+            text = {
+                val (textRes, count) = when {
+                    isSelectionMode && selectedUrls.isNotEmpty() -> {
+                        Pair(R.string.dialog_zip_selected_text, selectedUrls.size)
+                    }
+                    isSelectionMode -> {
+                        Pair(R.string.dialog_nothing_selected_zip_text_selection, validImageUrls.size)
+                    }
+                    else -> {
+                        Pair(R.string.dialog_zip_text, validImageUrls.size)
+                    }
+                }
+                Text(stringResource(textRes, count))
+            },
+            confirmButton = {
+                Button(onClick = {
+                    state.showZipDialog = false
+                    executeDownload(isZip = true)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { state.showZipDialog = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        )
+    }
+
+    if (showNothingSelectedDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showNothingSelectedDialog = false
+                pendingAction = null
+            },
+            title = { Text(stringResource(R.string.dialog_nothing_selected_title)) },
+            text = { Text(stringResource(R.string.dialog_nothing_selected_text)) },
+            confirmButton = {
+                Button(onClick = {
+                    showNothingSelectedDialog = false
+                    pendingAction?.invoke()
+                    pendingAction = null
+                }) { Text(stringResource(R.string.btn_download_all_anyway)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showNothingSelectedDialog = false
+                    pendingAction = null
+                }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
         )
     }
 
@@ -601,7 +1085,7 @@ fun GalleryScreen(
             val totalSize = items.sumOf { it.size }
             Text(
                 text = stringResource(R.string.gallery_total_stats, items.size, formatFileSize(totalSize)),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.CenterHorizontally)
             )
@@ -800,7 +1284,7 @@ fun ArchivesScreen(
             val totalSize = items.sumOf { it.file.length() }
             Text(
                 text = stringResource(R.string.gallery_total_stats, items.size, formatFileSize(totalSize)),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.CenterHorizontally)
             )
@@ -1025,25 +1509,64 @@ private suspend fun saveImg(c: Context, url: String) {
 private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
     return try {
         val bytes = URL(url).openStream().use { it.readBytes() }
+
+        // ФИЛЬТР: проверяем, что картинка не пустая (уменьшил минимальный размер)
+        if (bytes.isEmpty() || bytes.size < 100) { // Менее 100 байт - точно пустая
+            return 0
+        }
+
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val fileName = if (isBatch) "PT_${hash.take(8)}_${UUID.randomUUID().toString().take(4)}.jpg" else "PT_${hash.take(12)}.jpg"
 
         if (!isBatch) {
-            val cursor = c.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Images.Media._ID), "${MediaStore.Images.Media.DISPLAY_NAME} = ?", arrayOf(fileName), null)
-            if (cursor != null && cursor.count > 0) { cursor.close(); return 2 }
+            val cursor = c.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID),
+                "${MediaStore.Images.Media.DISPLAY_NAME} = ?",
+                arrayOf(fileName),
+                null
+            )
+            if (cursor != null && cursor.count > 0) {
+                cursor.close()
+                return 2
+            }
             cursor?.close()
         }
 
+        // Определяем реальный MIME type
+        val mimeType = when {
+            bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+            bytes.slice(0..7).toByteArray().contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) -> "image/png"
+            bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61)) -> "image/gif"
+            bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61)) -> "image/gif"
+            bytes.slice(0..11).toByteArray().contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)) -> "image/webp"
+            else -> "image/jpeg"
+        }
+
+        val extension = when (mimeType) {
+            "image/jpeg" -> ".jpg"
+            "image/png" -> ".png"
+            "image/gif" -> ".gif"
+            "image/webp" -> ".webp"
+            else -> ".jpg"
+        }
+
+        val finalFileName = fileName.replace(".jpg", extension)
+
         val v = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.DISPLAY_NAME, finalFileName)
+            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PicsTok")
+            put(MediaStore.Images.Media.SIZE, bytes.size)
         }
         c.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v)?.let { uri ->
             c.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
             1
         } ?: 0
-    } catch (e: Exception) { 0 }
+    } catch (e: Exception) {
+        e.printStackTrace() // Добавьте лог для отладки
+        0
+    }
 }
 
 private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: ParserState, onProgress: (Float) -> Unit) {
@@ -1054,24 +1577,37 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
             if (!directory.exists()) directory.mkdirs()
             val outputFile = File(directory, "PT_Archive_${System.currentTimeMillis()}.zip")
             val validUrls = urls.distinct()
+
             FileOutputStream(outputFile).use { fos ->
                 ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
+                    var savedCount = 0
                     validUrls.forEachIndexed { i, u ->
                         if (state.isDownloading) {
                             try {
                                 val bytes = URL(u).openStream().use { it.readBytes() }
-                                if (bytes.isNotEmpty()) {
+
+                                // ФИЛЬТР: проверяем, что картинка не пустая (по аналогии с saveImgInternal)
+                                if (bytes.isNotEmpty() && bytes.size >= 1024) { // Менее 1KB - вероятно пустая
                                     val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }.take(8)
-                                    zos.putNextEntry(ZipEntry("img_${i}_$hash.jpg"))
+                                    zos.putNextEntry(ZipEntry("img_${savedCount}_$hash.jpg"))
                                     zos.write(bytes)
                                     zos.closeEntry()
+                                    savedCount++
                                 }
-                            } catch (e: Exception) {}
+                            } catch (e: Exception) {
+                                // Игнорируем ошибки загрузки отдельных картинок
+                            }
                             withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / validUrls.size) }
                         }
                     }
+
+                    // Если не было сохранено ни одной картинки
+                    if (savedCount == 0) {
+                        throw IOException("No valid images found for archive")
+                    }
                 }
             }
+
             if (state.isDownloading) {
                 MediaScannerConnection.scanFile(c, arrayOf(outputFile.absolutePath), arrayOf("application/zip")) { _, _ -> }
                 withContext(Dispatchers.Main) {
@@ -1084,7 +1620,14 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
             withContext(Dispatchers.Main) {
                 onProgress(-1f)
                 state.isDownloading = false
-                Toast.makeText(c, c.getString(R.string.zip_error), Toast.LENGTH_SHORT).show()
+
+                // Более информативное сообщение об ошибке
+                val errorMessage = if (e.message?.contains("No valid images") == true) {
+                    c.getString(R.string.zip_no_valid_images)
+                } else {
+                    c.getString(R.string.zip_error)
+                }
+                Toast.makeText(c, errorMessage, Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -45,9 +45,16 @@
     <string name="material_you_desc">Цвета системы (Android 12+)</string>
 
     <string name="processing_label">Обработка…</string>
-    <string name="gallery_selected_count">Выбрано: %1$d (%2$s)</string>
-    <string name="gallery_selected_count_two_lines">Выбрано: %1$d\nРазмер: %2$s</string>
+    <string name="gallery_selected_count_items">Выбрано: %d</string>
+    <string name="gallery_selected_count_size">Размер: %s</string>
     <string name="gallery_total_stats">Всего: %1$d | Занято: %2$s</string>
+    <string name="zip_no_valid_images">Нет подходящих картинок для архива</string>
+
+    <string name="btn_selection_mode">Выделение</string>
+    <string name="selection_count">Выбрано: %1$d</string>
+    <string name="btn_download">Скачать</string>
+    <string name="btn_zip_short">ZIP</string>
+    <string name="btn_cancel_selection">Отмена выделения</string>
 
     <string name="error_download">Ошибка загрузки</string>
     <string name="toast_already_exists">Картинка уже есть в галерее</string>
@@ -60,4 +67,18 @@
     <string name="share_archive_title">Поделиться архивом</string>
     <string name="share_error">Ошибка отправки файла</string>
     <string name="parse_progress" >placeholder</string>
+
+    <string name="dialog_download_selected_title">Скачать выбранные?</string>
+    <string name="dialog_download_selected_text">Скачать %1$d выбранных картинок?</string>
+    <string name="dialog_zip_selected_title">Создать ZIP из выбранных?</string>
+    <string name="dialog_zip_selected_text">Создать ZIP архив из %1$d выбранных картинок?</string>
+
+    <string name="dialog_nothing_selected_title">Ничего не выбрано</string>
+    <string name="dialog_nothing_selected_text">Вы не выбрали ни одной картинки. Скачать все пригодные картинки?</string>
+    <string name="btn_download_all_anyway">Да, все</string>
+
+    <string name="dialog_nothing_selected_title_selection">Ничего не выбрано</string>
+    <string name="dialog_nothing_selected_text_selection">Вы не выбрали ни одной картинки. Скачать все %1$d найденных картинок?</string>
+    <string name="dialog_nothing_selected_zip_text_selection">Вы не выбрали ни одной картинки. Создать ZIP архив из всех %1$d найденных картинок?</string>
+
 </resources>

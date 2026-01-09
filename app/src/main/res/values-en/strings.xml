@@ -44,8 +44,10 @@
     <string name="material_you_desc">System colors (Android 12+)</string>
 
     <string name="processing_label">Processing…</string>
-    <string name="gallery_selected_count">Selected: %1$d (%2$s)</string>
+    <string name="gallery_selected_count_items">Selected: %d</string>
+    <string name="gallery_selected_count_size">Size: %s</string>
     <string name="gallery_total_stats">Total: %1$d | Used: %2$s</string>
+    <string name="zip_no_valid_images">No valid images for archive</string>
 
     <string name="error_download">Download error</string>
     <string name="toast_already_exists">Image already exists in gallery</string>
@@ -60,4 +62,23 @@
     <string name="btn_deselect_all">Uncheck all</string>
     <string name="parse_progress" >placeholder</string>
     <string name="gallery_selected_count_two_lines">Selected: %1$d Size: %2$s</string>
+
+    <string name="dialog_nothing_selected_title">Nothing selected</string>
+    <string name="dialog_nothing_selected_text">You haven\'t selected any images. Download all suitable images?</string>
+    <string name="btn_download_all_anyway">Yes, all</string>
+    <string name="btn_selection_mode">Selection</string>
+    <string name="selection_count">Selected: %1$</string>
+    <string name="btn_download">Download</string>
+    <string name="btn_zip_short">ZIP</string>
+    <string name="btn_cancel_selection">Cancel select</string>
+
+    <string name="dialog_download_selected_title">Download selected?</string>
+    <string name="dialog_download_selected_text">Download %1$d selected images?</string>
+    <string name="dialog_zip_selected_title">Create ZIP from selected?</string>
+    <string name="dialog_zip_selected_text">Create ZIP archive from %1$d selected images?</string>
+
+    <string name="dialog_nothing_selected_title_selection">Nothing selected</string>
+    <string name="dialog_nothing_selected_text_selection">You haven\'t selected any images. Download all %1$d found images?</string>
+    <string name="dialog_nothing_selected_zip_text_selection">You haven\'t selected any images. Create ZIP archive from all %1$d found images?</string>
+
 </resources>
