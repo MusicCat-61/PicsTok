@@ -147,48 +147,92 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
     var showSettings by remember { mutableStateOf(false) }
     var isSelectionMode by remember { mutableStateOf(false) }
-    var selectedSize by remember { mutableLongStateOf(0L) } // Размер выбранных
+    var selectedSize by remember { mutableLongStateOf(0L) }
     var selectedCount by remember { mutableIntStateOf(0) }
-    var onSelectAllTrigger by remember { mutableStateOf(false) } // Триггер для "Выбрать все"
+    var galleryTotalItems by remember { mutableIntStateOf(0) }
+    var archivesTotalItems by remember { mutableIntStateOf(0) }
+    var onSelectAllTrigger by remember { mutableStateOf(false) }
     var onDeleteTrigger by remember { mutableStateOf(false) }
+
+    // Вычисляем общее количество в зависимости от вкладки
+    val totalItemsInCurrentTab = when (state.currentTab) {
+        1 -> galleryTotalItems
+        2 -> archivesTotalItems
+        else -> 0
+    }
+
+    // Определяем текст кнопки "Выбрать все"/"Снять все"
+    val selectAllButtonText = if (selectedCount == totalItemsInCurrentTab && totalItemsInCurrentTab > 0) {
+        stringResource(R.string.btn_deselect_all)
+    } else {
+        stringResource(R.string.btn_select_all)
+    }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    if ((state.currentTab == 1 || state.currentTab == 2) && isSelectionMode) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(stringResource(R.string.gallery_selected_count, selectedCount, formatFileSize(selectedSize)), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            if ((state.currentTab == 1 || state.currentTab == 2) && isSelectionMode) {
+                TopAppBar(
+                    title = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // ИСПРАВЛЕНО: возвращаем одну строку с двумя параметрами
+                            Text(
+                                stringResource(R.string.gallery_selected_count, selectedCount, formatFileSize(selectedSize)),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 18.sp
+                            )
                         }
-                    } else {
-                        Text(stringResource(R.string.app_name), fontWeight = FontWeight.ExtraBold)
-                    }
-                },
-                navigationIcon = {
-                    if ((state.currentTab == 1 || state.currentTab == 2) && isSelectionMode) {
-                        TextButton(onClick = { onSelectAllTrigger = true }) {
-                            Text(stringResource(R.string.btn_select_all), fontWeight = FontWeight.Bold)
+                    },
+                    navigationIcon = {
+                        TextButton(
+                            onClick = {
+                                onSelectAllTrigger = true
+                            },
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text(selectAllButtonText, fontWeight = FontWeight.Bold)
                         }
-                    }
-                },
-                actions = {
-                    if ((state.currentTab == 1 || state.currentTab == 2) && isSelectionMode) {
-                        TextButton(onClick = { isSelectionMode = false }) {
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = { isSelectionMode = false },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
                             Text(stringResource(R.string.btn_cancel), fontWeight = FontWeight.Bold)
                         }
                     }
-                    IconButton(onClick = { showSettings = true }) { Icon(painterResource(R.drawable.ic_settings), null) }
-                }
-            )
+                )
+            } else {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(stringResource(R.string.app_name), fontWeight = FontWeight.ExtraBold)
+                    },
+                    actions = {
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(painterResource(R.drawable.ic_settings), null)
+                        }
+                    }
+                )
+            }
         },
         floatingActionButton = {
             if (state.currentTab == 1 || state.currentTab == 2) {
                 FloatingActionButton(
                     onClick = {
-                        if (!isSelectionMode) isSelectionMode = true
-                        else if (selectedCount > 0) onDeleteTrigger = true
+                        if (!isSelectionMode) {
+                            isSelectionMode = true
+                        } else if (selectedCount > 0) {
+                            onDeleteTrigger = true
+                        }
                     },
-                    containerColor = if (isSelectionMode && selectedCount == 0) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer
+                    containerColor = if (isSelectionMode && selectedCount == 0) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                    }
                 ) {
                     Icon(painterResource(R.drawable.ic_delete), null)
                 }
@@ -196,9 +240,33 @@ fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(selected = state.currentTab == 0, onClick = { state.currentTab = 0; isSelectionMode = false }, icon = { Icon(painterResource(R.drawable.ic_nav_parser), null) }, label = { Text(stringResource(R.string.tab_parser)) })
-                NavigationBarItem(selected = state.currentTab == 1, onClick = { state.currentTab = 1; isSelectionMode = false }, icon = { Icon(painterResource(R.drawable.ic_nav_gallery), null) }, label = { Text(stringResource(R.string.tab_gallery)) })
-                NavigationBarItem(selected = state.currentTab == 2, onClick = { state.currentTab = 2; isSelectionMode = false }, icon = { Icon(painterResource(R.drawable.ic_archive), null) }, label = { Text(stringResource(R.string.tab_archives)) })
+                NavigationBarItem(
+                    selected = state.currentTab == 0,
+                    onClick = {
+                        state.currentTab = 0
+                        isSelectionMode = false
+                    },
+                    icon = { Icon(painterResource(R.drawable.ic_nav_parser), null) },
+                    label = { Text(stringResource(R.string.tab_parser)) }
+                )
+                NavigationBarItem(
+                    selected = state.currentTab == 1,
+                    onClick = {
+                        state.currentTab = 1
+                        isSelectionMode = false
+                    },
+                    icon = { Icon(painterResource(R.drawable.ic_nav_gallery), null) },
+                    label = { Text(stringResource(R.string.tab_gallery)) }
+                )
+                NavigationBarItem(
+                    selected = state.currentTab == 2,
+                    onClick = {
+                        state.currentTab = 2
+                        isSelectionMode = false
+                    },
+                    icon = { Icon(painterResource(R.drawable.ic_archive), null) },
+                    label = { Text(stringResource(R.string.tab_archives)) }
+                )
             }
         }
     ) { padding ->
@@ -207,32 +275,46 @@ fun MainScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                 0 -> ParserScreen(state, api, loader)
                 1 -> GalleryScreen(
                     isSelectionMode = isSelectionMode,
-                    onSelectionChange = { count, size -> selectedCount = count; selectedSize = size },
+                    onSelectionChange = { count, size ->
+                        selectedCount = count
+                        selectedSize = size
+                    },
+                    onTotalItemsChanged = { total -> galleryTotalItems = total },
                     onDeleteRequest = onDeleteTrigger,
                     onSelectAllRequest = onSelectAllTrigger,
-                    onOperationFinished = {
+                    onOperationFinished = { wasDeleted ->
                         onDeleteTrigger = false
                         onSelectAllTrigger = false
-                        if(it) isSelectionMode = false // if deleted -> exit selection
+                        if (wasDeleted) {
+                            isSelectionMode = false
+                        }
                     }
                 )
                 2 -> ArchivesScreen(
                     isSelectionMode = isSelectionMode,
-                    onSelectionChange = { count, size -> selectedCount = count; selectedSize = size },
+                    onSelectionChange = { count, size ->
+                        selectedCount = count
+                        selectedSize = size
+                    },
+                    onTotalItemsChanged = { total -> archivesTotalItems = total },
                     onDeleteRequest = onDeleteTrigger,
                     onSelectAllRequest = onSelectAllTrigger,
-                    onOperationFinished = {
+                    onOperationFinished = { wasDeleted ->
                         onDeleteTrigger = false
                         onSelectAllTrigger = false
-                        if(it) isSelectionMode = false
+                        if (wasDeleted) {
+                            isSelectionMode = false
+                        }
                     }
                 )
             }
         }
     }
-    if (showSettings) SettingsSheet(state, loader) { showSettings = false }
-}
 
+    if (showSettings) {
+        SettingsSheet(state, loader) { showSettings = false }
+    }
+}
 @Composable
 fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
     val context = LocalContext.current
@@ -254,7 +336,9 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
 
     LaunchedEffect(Unit) { tryPasteFromClipboard() }
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) tryPasteFromClipboard() }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) tryPasteFromClipboard()
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
@@ -314,10 +398,18 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                     ) { Text(stringResource(R.string.btn_start)) }
                 }
             } else {
-                Text(stringResource(R.string.parse_progress, state.processedCount, state.foundCount), fontWeight = FontWeight.Bold)
-                if (state.isWorking) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                // Возвращаем старую строку прогресса
+                Text(stringResource(R.string.parse_progress_comments, state.processedCount), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(stringResource(R.string.parse_progress_images, state.foundCount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
 
-                LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.weight(1f).padding(top = 8.dp)) {
+                if (state.isWorking) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                }
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.weight(1f).padding(top = 8.dp)
+                ) {
                     items(state.resultUrls) { url ->
                         Box(Modifier.padding(2.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp))) {
                             AsyncImage(
@@ -330,7 +422,9 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                             IconButton(
                                 onClick = { scope.launch { saveImg(context, url) } },
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(32.dp).background(Color.Black.copy(0.5f), CircleShape)
-                            ) { Icon(painterResource(R.drawable.ic_download), null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                            ) {
+                                Icon(painterResource(R.drawable.ic_download), null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 }
@@ -339,25 +433,46 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
         }
 
         if (state.isFinished) {
-            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), tonalElevation = 8.dp, shadowElevation = 16.dp) {
-                Row(Modifier.padding(12.dp).navigationBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp
+            ) {
+                Row(
+                    Modifier.padding(12.dp).navigationBarsPadding(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(onClick = { state.showDownloadAllDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { state.showDownloadAllDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(painterResource(R.drawable.ic_download), null, Modifier.size(18.dp))
                             Text(stringResource(R.string.btn_download_all), fontSize = 11.sp)
                         }
-                        Button(onClick = { state.showZipDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { state.showZipDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(painterResource(R.drawable.ic_archive), null, Modifier.size(18.dp))
                             Text(stringResource(R.string.btn_zip), fontSize = 11.sp)
                         }
                     }
                     Spacer(Modifier.width(12.dp))
                     OutlinedIconButton(
-                        onClick = { state.resultUrls = emptyList(); state.isFinished = false; state.url = ""; state.processedCount = 0; state.foundCount = 0 },
+                        onClick = {
+                            state.resultUrls = emptyList()
+                            state.isFinished = false
+                            state.url = ""
+                            state.processedCount = 0
+                            state.foundCount = 0
+                        },
                         modifier = Modifier.size(64.dp),
                         colors = IconButtonDefaults.outlinedIconButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         border = BorderStroke(2.dp, MaterialTheme.colorScheme.error)
-                    ) { Icon(painterResource(R.drawable.ic_clear), null, Modifier.size(32.dp)) }
+                    ) {
+                        Icon(painterResource(R.drawable.ic_clear), null, Modifier.size(32.dp))
+                    }
                 }
             }
         }
@@ -411,9 +526,10 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
 fun GalleryScreen(
     isSelectionMode: Boolean,
     onSelectionChange: (Int, Long) -> Unit,
+    onTotalItemsChanged: (Int) -> Unit,
     onDeleteRequest: Boolean,
     onSelectAllRequest: Boolean,
-    onOperationFinished: (Boolean) -> Unit // true if items were deleted
+    onOperationFinished: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -439,27 +555,45 @@ fun GalleryScreen(
             }
         }
         items = list
+        // Уведомляем родителя об общем количестве
+        onTotalItemsChanged(list.size)
     }
 
     LaunchedEffect(Unit) { load() }
 
-    // Подсчет размера выбранных
+    // Подсчет размера выбранных и уведомление родителя
     LaunchedEffect(selectedItems) {
         val totalSize = selectedItems.sumOf { it.size }
         onSelectionChange(selectedItems.size, totalSize)
     }
 
-    LaunchedEffect(onDeleteRequest) { if (onDeleteRequest) showDeleteDialog = true }
+    // Обработка запроса на удаление
+    LaunchedEffect(onDeleteRequest) {
+        if (onDeleteRequest) {
+            showDeleteDialog = true
+        }
+    }
 
-    // Обработка "Выбрать все"
+    // Обработка запроса "Выбрать все" или "Снять все"
     LaunchedEffect(onSelectAllRequest) {
         if (onSelectAllRequest) {
-            selectedItems = items.toSet()
+            if (selectedItems.size == items.size) {
+                // Если уже все выбраны - снимаем выделение
+                selectedItems = emptySet()
+            } else {
+                // Иначе выбираем все
+                selectedItems = items.toSet()
+            }
             onOperationFinished(false) // Сбрасываем триггер кнопки
         }
     }
 
-    LaunchedEffect(isSelectionMode) { if (!isSelectionMode) selectedItems = emptySet() }
+    // Сброс выделения при выходе из режима выбора
+    LaunchedEffect(isSelectionMode) {
+        if (!isSelectionMode) {
+            selectedItems = emptySet()
+        }
+    }
 
     Column {
         // Статистика всего хранилища
@@ -474,24 +608,63 @@ fun GalleryScreen(
         }
 
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.gallery_empty), color = Color.Gray) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(stringResource(R.string.gallery_empty), color = Color.Gray)
+            }
         } else {
-            LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.weight(1f).padding(2.dp)) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.weight(1f).padding(2.dp)
+            ) {
                 items(items) { item ->
                     val isSelected = selectedItems.contains(item)
-                    Box(Modifier.padding(2.dp).aspectRatio(1f).clip(RoundedCornerShape(8.dp))
-                        .clickable { if (isSelectionMode) selectedItems = if (isSelected) selectedItems - item else selectedItems + item }
+                    Box(
+                        Modifier
+                            .padding(2.dp)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                if (isSelectionMode) {
+                                    selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                                }
+                            }
                     ) {
-                        AsyncImage(model = item.uri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                         if (!isSelectionMode) {
                             IconButton(
                                 onClick = { shareImage(context, item.uri) },
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).size(28.dp).background(Color.Black.copy(0.4f), CircleShape)
-                            ) { Icon(painterResource(R.drawable.ic_share), null, tint = Color.White, modifier = Modifier.size(16.dp)) }
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(4.dp)
+                                    .size(28.dp)
+                                    .background(Color.Black.copy(0.4f), CircleShape)
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_share),
+                                    null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                         if (isSelected) {
-                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(0.5f)), contentAlignment = Alignment.Center) {
-                                Icon(painterResource(R.drawable.ic_check), null, tint = Color.White, modifier = Modifier.size(36.dp))
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.primary.copy(0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_check),
+                                    null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(36.dp)
+                                )
                             }
                         }
                     }
@@ -503,23 +676,50 @@ fun GalleryScreen(
     if (showDeleteDialog) {
         val totalSizeToDelete = selectedItems.sumOf { it.size }
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false; onOperationFinished(false) },
-            title = { Text(stringResource(R.string.dialog_delete_title)) },
-            text = { Text(stringResource(R.string.dialog_delete_text, selectedItems.size, formatFileSize(totalSizeToDelete))) },
-            confirmButton = {
-                Button(onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        selectedItems.forEach { context.contentResolver.delete(it.uri, null, null) }
-                        withContext(Dispatchers.Main) {
-                            load()
-                            showDeleteDialog = false
-                            onOperationFinished(true) // Deleted successfully
-                            Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.btn_confirm_delete)) }
+            onDismissRequest = {
+                showDeleteDialog = false
+                onOperationFinished(false)
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false; onOperationFinished(false) }) { Text(stringResource(R.string.btn_cancel)) } }
+            title = { Text(stringResource(R.string.dialog_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.dialog_delete_text,
+                        selectedItems.size,
+                        formatFileSize(totalSizeToDelete)
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            selectedItems.forEach { context.contentResolver.delete(it.uri, null, null) }
+                            withContext(Dispatchers.Main) {
+                                load() // Перезагружаем список
+                                showDeleteDialog = false
+                                onOperationFinished(true) // Deleted successfully
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_deleted),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.btn_confirm_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onOperationFinished(false)
+                }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
         )
     }
 }
@@ -528,6 +728,7 @@ fun GalleryScreen(
 fun ArchivesScreen(
     isSelectionMode: Boolean,
     onSelectionChange: (Int, Long) -> Unit,
+    onTotalItemsChanged: (Int) -> Unit,
     onDeleteRequest: Boolean,
     onSelectAllRequest: Boolean,
     onOperationFinished: (Boolean) -> Unit
@@ -541,36 +742,60 @@ fun ArchivesScreen(
     fun load() {
         val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "PicsTok")
         if (dir.exists()) {
-            items = dir.listFiles { _, name -> name.endsWith(".zip") }?.map { ArchiveItem(it) }?.sortedByDescending { it.file.lastModified() } ?: emptyList()
+            items = dir.listFiles { _, name -> name.endsWith(".zip") }
+                ?.map { ArchiveItem(it) }
+                ?.sortedByDescending { it.file.lastModified() } ?: emptyList()
         } else {
             items = emptyList()
         }
+        // Уведомляем родителя об общем количестве
+        onTotalItemsChanged(items.size)
     }
 
     LaunchedEffect(Unit) { load() }
 
-    // Периодическое обновление списка (на случай если архив создался только что)
+    // Периодическое обновление списка
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) load() }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) load()
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Подсчет размера выбранных
     LaunchedEffect(selectedItems) {
         val totalSize = selectedItems.sumOf { it.file.length() }
         onSelectionChange(selectedItems.size, totalSize)
     }
-    LaunchedEffect(onDeleteRequest) { if (onDeleteRequest) showDeleteDialog = true }
+
+    // Обработка запроса на удаление
+    LaunchedEffect(onDeleteRequest) {
+        if (onDeleteRequest) showDeleteDialog = true
+    }
+
+    // Обработка запроса "Выбрать все" или "Снять все"
     LaunchedEffect(onSelectAllRequest) {
         if (onSelectAllRequest) {
-            selectedItems = items.toSet()
+            if (selectedItems.size == items.size) {
+                // Если уже все выбраны - снимаем выделение
+                selectedItems = emptySet()
+            } else {
+                // Иначе выбираем все
+                selectedItems = items.toSet()
+            }
             onOperationFinished(false)
         }
     }
-    LaunchedEffect(isSelectionMode) { if (!isSelectionMode) selectedItems = emptySet() }
+
+    // Сброс выделения при выходе из режима выбора
+    LaunchedEffect(isSelectionMode) {
+        if (!isSelectionMode) selectedItems = emptySet()
+    }
 
     Column {
+        // Статистика всех архивов
         if (items.isNotEmpty() && !isSelectionMode) {
             val totalSize = items.sumOf { it.file.length() }
             Text(
@@ -582,21 +807,46 @@ fun ArchivesScreen(
         }
 
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(R.string.archives_empty), color = Color.Gray) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(stringResource(R.string.archives_empty), color = Color.Gray)
+            }
         } else {
-            LazyVerticalGrid(columns = GridCells.Fixed(1), modifier = Modifier.weight(1f).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(1),
+                modifier = Modifier.weight(1f).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(items) { item ->
                     val isSelected = selectedItems.contains(item)
                     Card(
-                        modifier = Modifier.fillMaxWidth().height(80.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp)
                             .clickable {
-                                if (isSelectionMode) selectedItems = if (isSelected) selectedItems - item else selectedItems + item
-                                else shareFile(context, item.file) // По клику делимся/открываем
+                                if (isSelectionMode) {
+                                    selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                                } else {
+                                    shareFile(context, item.file)
+                                }
                             },
-                        colors = CardDefaults.cardColors(containerColor = if(isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
                     ) {
-                        Row(Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(painterResource(R.drawable.ic_archive), null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                        Row(
+                            Modifier.fillMaxSize().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_archive),
+                                null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Spacer(Modifier.width(16.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(item.file.name, fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 16.sp)
@@ -619,23 +869,50 @@ fun ArchivesScreen(
     if (showDeleteDialog) {
         val totalSizeToDelete = selectedItems.sumOf { it.file.length() }
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false; onOperationFinished(false) },
-            title = { Text(stringResource(R.string.dialog_delete_title)) },
-            text = { Text(stringResource(R.string.dialog_delete_text, selectedItems.size, formatFileSize(totalSizeToDelete))) },
-            confirmButton = {
-                Button(onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        selectedItems.forEach { it.file.delete() }
-                        withContext(Dispatchers.Main) {
-                            load()
-                            showDeleteDialog = false
-                            onOperationFinished(true)
-                            Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.btn_confirm_delete)) }
+            onDismissRequest = {
+                showDeleteDialog = false
+                onOperationFinished(false)
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false; onOperationFinished(false) }) { Text(stringResource(R.string.btn_cancel)) } }
+            title = { Text(stringResource(R.string.dialog_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.dialog_delete_text,
+                        selectedItems.size,
+                        formatFileSize(totalSizeToDelete)
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            selectedItems.forEach { it.file.delete() }
+                            withContext(Dispatchers.Main) {
+                                load() // Перезагружаем список
+                                showDeleteDialog = false
+                                onOperationFinished(true)
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_deleted),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.btn_confirm_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onOperationFinished(false)
+                }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
         )
     }
 }

@@ -9,12 +9,14 @@
     <string name="btn_zip">В ZIP архив</string>
     <string name="btn_clear_cache">Очистить кэш</string>
     <string name="btn_delete_selected">Удалить (%1$d)</string>
-    <string name="btn_select_all">Всё</string>
+    <string name="btn_select_all">Выбрать все</string>
+    <string name="btn_deselect_all">Снять все</string>
     <string name="btn_cancel">Отмена</string>
     <string name="btn_share">Поделиться</string>
 
     <string name="input_label">Вставьте ссылку TikTok</string>
-    <string name="parse_progress">Просмотрено комментов: %1$d | Найдено картинок: %2$d</string>
+    <string name="parse_progress_comments">Просмотрено комментов: %1$d</string>
+    <string name="parse_progress_images">Найдено картинок: %1$d</string>
     <string name="error_empty_link">Сначала вставьте ссылку</string>
 
     <string name="dialog_download_title">Скачать все?</string>
@@ -44,6 +46,7 @@
 
     <string name="processing_label">Обработка…</string>
     <string name="gallery_selected_count">Выбрано: %1$d (%2$s)</string>
+    <string name="gallery_selected_count_two_lines">Выбрано: %1$d\nРазмер: %2$s</string>
     <string name="gallery_total_stats">Всего: %1$d | Занято: %2$s</string>
 
     <string name="error_download">Ошибка загрузки</string>
@@ -56,4 +59,5 @@
 
     <string name="share_archive_title">Поделиться архивом</string>
     <string name="share_error">Ошибка отправки файла</string>
+    <string name="parse_progress" >placeholder</string>
 </resources>
