@@ -626,7 +626,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
 
                     if (state.isWorking && state.foundCount == 0) {
                         Text(
-                            "Проверяем картинки...",
+                            stringResource(R.string.check_pics),
                             fontWeight = FontWeight.Normal,
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -781,7 +781,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi, loader: ImageLoader) {
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         ) {
-                            Text(stringResource(R.string.btn_cancel), fontSize = 12.sp)
+                            Text(stringResource(R.string.btn_cancel), fontSize = 14.sp)
                         }
                     }
                 } else {
@@ -1471,17 +1471,43 @@ private suspend fun saveAll(c: Context, urls: List<String>, state: ParserState, 
     withContext(Dispatchers.IO) {
         try {
             val validUrls = urls.distinct()
+            var savedCount = 0
+            var skippedCount = 0
+            var errorCount = 0
+
             validUrls.forEachIndexed { i, u ->
                 if (state.isDownloading) {
-                    saveImgInternal(c, u, true)
+                    val result = saveImgInternal(c, u, true)
+                    when (result) {
+                        1 -> savedCount++
+                        2 -> skippedCount++
+                        else -> errorCount++
+                    }
                     withContext(Dispatchers.Main) { onProgress((i + 1).toFloat() / validUrls.size) }
                 }
             }
+
             withContext(Dispatchers.Main) {
                 onProgress(-1f)
                 val wasActive = state.isDownloading
                 state.isDownloading = false
-                if (wasActive) Toast.makeText(c, c.getString(R.string.toast_saved), Toast.LENGTH_SHORT).show()
+
+                if (wasActive) {
+                    val message = buildString {
+                        if (savedCount > 0) {
+                            append(c.getString(R.string.toast_saved, savedCount))
+                        }
+                        if (skippedCount > 0) {
+                            if (isNotEmpty()) append(" ")
+                            append(c.getString(R.string.toast_skipped, skippedCount))
+                        }
+                        if (errorCount > 0) {
+                            if (isNotEmpty()) append(" ")
+                            append(c.getString(R.string.toast_errors, errorCount))
+                        }
+                    }
+                    Toast.makeText(c, message, Toast.LENGTH_LONG).show()
+                }
             }
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
@@ -1516,30 +1542,46 @@ private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
         }
 
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val fileName = if (isBatch) "PT_${hash.take(8)}_${UUID.randomUUID().toString().take(4)}.jpg" else "PT_${hash.take(12)}.jpg"
 
-        if (!isBatch) {
-            val cursor = c.contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Images.Media._ID),
-                "${MediaStore.Images.Media.DISPLAY_NAME} = ?",
-                arrayOf(fileName),
-                null
-            )
-            if (cursor != null && cursor.count > 0) {
-                cursor.close()
-                return 2
+        // Проверяем, существует ли уже картинка с таким хешом
+        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME)
+        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+        val selectionArgs = arrayOf("%Pictures/PicsTok%")
+
+        val cursor = c.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )
+
+        var alreadyExists = false
+        cursor?.use { c ->
+            while (c.moveToNext()) {
+                val displayName = c.getString(c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+                // Извлекаем хеш из имени файла
+                if (displayName.contains(hash.take(12)) || displayName.contains(hash.take(8))) {
+                    alreadyExists = true
+                    break
+                }
             }
-            cursor?.close()
         }
+        cursor?.close()
+
+        if (alreadyExists) {
+            return 2 // Картинка уже существует
+        }
+
+        val fileName = if (isBatch) "PT_${hash.take(8)}_${UUID.randomUUID().toString().take(4)}.jpg" else "PT_${hash.take(12)}.jpg"
 
         // Определяем реальный MIME type
         val mimeType = when {
-            bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
-            bytes.slice(0..7).toByteArray().contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) -> "image/png"
-            bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61)) -> "image/gif"
-            bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61)) -> "image/gif"
-            bytes.slice(0..11).toByteArray().contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)) -> "image/webp"
+            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+            bytes.size >= 8 && bytes.slice(0..7).toByteArray().contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) -> "image/png"
+            bytes.size >= 6 && bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61)) -> "image/gif"
+            bytes.size >= 6 && bytes.slice(0..5).toByteArray().contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61)) -> "image/gif"
+            bytes.size >= 12 && bytes.slice(0..11).toByteArray().contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)) -> "image/webp"
             else -> "image/jpeg"
         }
 
@@ -1578,21 +1620,52 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
             val outputFile = File(directory, "PT_Archive_${System.currentTimeMillis()}.zip")
             val validUrls = urls.distinct()
 
+            // Получаем список уже существующих хешей из галереи
+            val existingHashes = mutableSetOf<String>()
+            val projection = arrayOf(MediaStore.Images.Media.DISPLAY_NAME)
+            val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+            val selectionArgs = arrayOf("%Pictures/PicsTok%")
+
+            c.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+                    // Извлекаем хеш из имени файла: PT_XXXXXXXXXXXX.jpg или PT_XXXXXXXX_XXXX.jpg
+                    val hashMatch = Regex("PT_([a-f0-9]{8,12})").find(displayName)
+                    hashMatch?.groupValues?.get(1)?.let { hash ->
+                        existingHashes.add(hash)
+                    }
+                }
+            }
+
             FileOutputStream(outputFile).use { fos ->
                 ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
                     var savedCount = 0
+                    var skippedCount = 0
                     validUrls.forEachIndexed { i, u ->
                         if (state.isDownloading) {
                             try {
                                 val bytes = URL(u).openStream().use { it.readBytes() }
 
-                                // ФИЛЬТР: проверяем, что картинка не пустая (по аналогии с saveImgInternal)
-                                if (bytes.isNotEmpty() && bytes.size >= 1024) { // Менее 1KB - вероятно пустая
-                                    val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }.take(8)
-                                    zos.putNextEntry(ZipEntry("img_${savedCount}_$hash.jpg"))
-                                    zos.write(bytes)
-                                    zos.closeEntry()
-                                    savedCount++
+                                // ФИЛЬТР: проверяем, что картинка не пустая
+                                if (bytes.isNotEmpty() && bytes.size >= 1024) {
+                                    val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+                                    val shortHash = hash.take(8)
+
+                                    // Проверяем, есть ли уже такая картинка в галерее
+                                    if (existingHashes.any { hash.contains(it) || shortHash == it.take(8) }) {
+                                        skippedCount++
+                                    } else {
+                                        zos.putNextEntry(ZipEntry("img_${savedCount}_$shortHash.jpg"))
+                                        zos.write(bytes)
+                                        zos.closeEntry()
+                                        savedCount++
+                                    }
                                 }
                             } catch (e: Exception) {
                                 // Игнорируем ошибки загрузки отдельных картинок
@@ -1603,7 +1676,12 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
 
                     // Если не было сохранено ни одной картинки
                     if (savedCount == 0) {
-                        throw IOException("No valid images found for archive")
+                        val message = if (skippedCount > 0) {
+                            "All $skippedCount images already exist in gallery"
+                        } else {
+                            "No valid images found for archive"
+                        }
+                        throw IOException(message)
                     }
                 }
             }
@@ -1622,10 +1700,16 @@ private suspend fun downloadAllAsZip(c: Context, urls: List<String>, state: Pars
                 state.isDownloading = false
 
                 // Более информативное сообщение об ошибке
-                val errorMessage = if (e.message?.contains("No valid images") == true) {
-                    c.getString(R.string.zip_no_valid_images)
-                } else {
-                    c.getString(R.string.zip_error)
+                val errorMessage = when {
+                    e.message?.contains("All images already exist") == true -> {
+                        c.getString(R.string.all_images_already_exist)
+                    }
+                    e.message?.contains("No valid images") == true -> {
+                        c.getString(R.string.zip_no_valid_images)
+                    }
+                    else -> {
+                        c.getString(R.string.zip_error)
+                    }
                 }
                 Toast.makeText(c, errorMessage, Toast.LENGTH_SHORT).show()
             }

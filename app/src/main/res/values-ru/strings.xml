@@ -24,7 +24,7 @@
     <string name="dialog_zip_title">Создать ZIP?</string>
     <string name="dialog_zip_text">Все найденные картинки будут упакованы в один архив.</string>
 
-    <string name="toast_saved">Сохранено!</string>
+
     <string name="toast_deleted">Удалено</string>
     <string name="gallery_empty">Тут пока пусто</string>
     <string name="archives_empty">Архивов нет</string>
@@ -80,5 +80,12 @@
     <string name="dialog_nothing_selected_title_selection">Ничего не выбрано</string>
     <string name="dialog_nothing_selected_text_selection">Вы не выбрали ни одной картинки. Скачать все %1$d найденных картинок?</string>
     <string name="dialog_nothing_selected_zip_text_selection">Вы не выбрали ни одной картинки. Создать ZIP архив из всех %1$d найденных картинок?</string>
+    <string name="check_pics">Проверяем картинки</string>
+
+    <string name="all_images_already_exist">Все картинки уже есть в галерее</string>
+
+    <string name="toast_saved">Сохранено: %d</string>
+    <string name="toast_skipped">Пропущено (уже есть): %d</string>
+    <string name="toast_errors">Ошибок: %d</string>
 
 </resources>

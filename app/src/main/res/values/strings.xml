@@ -23,7 +23,7 @@
     <string name="dialog_zip_title">Create ZIP?</string>
     <string name="dialog_zip_text">All found images will be packed into one archive.</string>
 
-    <string name="toast_saved">Saved!</string>
+
     <string name="toast_deleted">Deleted</string>
     <string name="gallery_empty">It\'s empty here</string>
     <string name="archives_empty">No archives found</string>
@@ -78,5 +78,10 @@
     <string name="dialog_nothing_selected_title_selection">Nothing selected</string>
     <string name="dialog_nothing_selected_text_selection">You haven\'t selected any images. Download all %1$d found images?</string>
     <string name="dialog_nothing_selected_zip_text_selection">You haven\'t selected any images. Create ZIP archive from all %1$d found images?</string>
+    <string name="check_pics">Checking pictures</string>
+    <string name="all_images_already_exist">All images already exist in gallery</string>
+    <string name="toast_saved">Saved: %d</string>
+    <string name="toast_skipped">Skipped (already exist): %d</string>
+    <string name="toast_errors">Errors: %d</string>
 
 </resources>
