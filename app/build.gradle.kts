@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.musiccat.picstok"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -63,11 +63,18 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
     // Изображения (Coil)
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.3.0")
+// Для загрузки изображений по сети (обязательно!)
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+// Дополнительные декодеры (если нужны)
+    implementation("io.coil-kt.coil3:coil-gif:3.3.0") // Остается Android-only
+    implementation("io.coil-kt.coil3:coil-svg:3.3.0")
+// Для вашего HEIC декодера (avif-coder-coil) также потребуется обновить
+    implementation("com.github.awxkee:avif-coder-coil:2.1.4")
+    implementation("com.github.awxkee:avif-coder:2.1.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.8.2")
 
-    implementation("io.coil-kt:coil-gif:2.4.0")
-    implementation("io.coil-kt:coil-svg:2.4.0")
-    implementation("io.coil-kt:coil-video:2.4.0")
 
 
 
