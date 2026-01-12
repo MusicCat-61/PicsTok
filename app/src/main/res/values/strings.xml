@@ -156,5 +156,11 @@
     <string name="error_url_forbidden">Access to content is forbidden.</string>
     <string name="error_url_rate_limit">Too many requests. Please wait.</string>
 
+    <string name="sort_newest_first">Newest first</string>
+    <string name="sort_oldest_first">Oldest first</string>
+    <string name="sort_order_today">Today</string>
+    <string name="sort_order_yesterday">Yesterday</string>
+    <string name="accessibility_sort_button">Sort button. Press to change order</string>
+
 
 </resources>

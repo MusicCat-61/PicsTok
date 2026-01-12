@@ -159,6 +159,12 @@
     <string name="error_url_not_found">Ссылка не найдена или удалена.</string>
     <string name="error_url_gone">Контент по ссылке был удален.</string>
     <string name="error_url_forbidden">Доступ к контенту запрещен.</string>
-    <string name="error_url_rate_limit">Слишком много запросов. Подождите.</string> дай на инглише
+    <string name="error_url_rate_limit">Слишком много запросов. Подождите.</string>
+
+    <string name="sort_newest_first">Новые сверху</string>
+    <string name="sort_oldest_first">Старые сверху</string>
+    <string name="sort_order_today">Сегодня</string>
+    <string name="sort_order_yesterday">Вчера</string>
+    <string name="accessibility_sort_button">Кнопка сортировки. Нажмите для изменения порядка</string>
 
 </resources>
