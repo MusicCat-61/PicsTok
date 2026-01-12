@@ -79,6 +79,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.text.style.TextAlign
 import coil3.BitmapImage
 import coil3.decode.BitmapFactoryDecoder
@@ -88,8 +90,9 @@ import okhttp3.Request
 import okio.Buffer
 import okio.buffer
 import okio.BufferedSource
-
-
+import androidx.compose.ui.draw.rotate
+import com.musiccat.picstok.GallerySortOrder
+import com.musiccat.picstok.GalleryGroup
 import kotlinx.io.files.SystemFileSystem
 import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
@@ -1524,38 +1527,38 @@ fun GalleryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var items by remember { mutableStateOf(listOf<GalleryItem>()) }
+    var groupedItems by remember { mutableStateOf(listOf<GalleryGroup>()) }
     var selectedItems by remember { mutableStateOf(setOf<GalleryItem>()) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showShareDialog by remember { mutableStateOf(false) } // Добавляем диалог для шеринга
+    var showShareDialog by remember { mutableStateOf(false) }
+    var totalGallerySize by remember { mutableLongStateOf(0L) }
+    var sortOrder by remember { mutableStateOf(GallerySortOrder.NEWEST_FIRST) }
 
     fun load() {
-        val list = mutableListOf<GalleryItem>()
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.SIZE, MediaStore.Images.Media.DATE_ADDED),
-            "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?",
-            arrayOf("%Pictures/PicsTok%"),
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        )?.use { c ->
-            val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val sizeCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            val dateCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            while (c.moveToNext()) {
-                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(idCol))
-                list.add(GalleryItem(uri, c.getLong(sizeCol), c.getLong(dateCol)))
-            }
+        scope.launch {
+            groupedItems = loadGalleryGrouped(context, sortOrder)
+            val totalItems = groupedItems.sumOf { it.items.size }
+            onTotalItemsChanged(totalItems)
+
+            // Получаем общий размер галереи используя вашу функцию
+            totalGallerySize = getGallerySizeBytes(context)
         }
-        items = list
-        // Уведомляем родителя об общем количестве
-        onTotalItemsChanged(list.size)
     }
 
-    LaunchedEffect(Unit) { load() }
+    // Первоначальная загрузка
+    LaunchedEffect(Unit) {
+        load()
+    }
+
+    // Обновляем данные при изменении порядка сортировки
+    LaunchedEffect(sortOrder) {
+        load()
+    }
 
     // Подсчет размера выбранных и уведомление родителя
     LaunchedEffect(selectedItems) {
         val uris = selectedItems.map { it.uri.toString() }
+        // Используем вашу функцию из SizeUtil.kt
         val totalSize = getSelectedSizeBytes(context, uris)
         onSelectionChange(selectedItems.size, totalSize)
     }
@@ -1570,14 +1573,15 @@ fun GalleryScreen(
     // Обработка запроса "Выбрать все" или "Снять все"
     LaunchedEffect(onSelectAllRequest) {
         if (onSelectAllRequest) {
-            if (selectedItems.size == items.size) {
+            val allItems = groupedItems.flatMap { it.items }
+            if (selectedItems.size == allItems.size) {
                 // Если уже все выбраны - снимаем выделение
                 selectedItems = emptySet()
             } else {
                 // Иначе выбираем все
-                selectedItems = items.toSet()
+                selectedItems = allItems.toSet()
             }
-            onOperationFinished(false) // Сбрасываем триггер кнопки
+            onOperationFinished(false)
         }
     }
 
@@ -1595,7 +1599,6 @@ fun GalleryScreen(
         try {
             val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = "image/*"
-                // Собираем все URI выбранных картинок
                 val uris = ArrayList<Uri>()
                 selectedItems.forEach { item ->
                     uris.add(item.uri)
@@ -1610,76 +1613,168 @@ fun GalleryScreen(
     }
 
     Column {
-        // Статистика всего хранилища
-        if (items.isNotEmpty() && !isSelectionMode) {
-            val totalSize = getGallerySizeBytes(context)
-            Text(
-                text = stringResource(R.string.gallery_total_stats, items.size, formatFileSize(totalSize)),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).align(Alignment.CenterHorizontally)
-            )
+        // Статистика всего хранилища и кнопка сортировки
+        if (groupedItems.isNotEmpty() && !isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    val totalItems = groupedItems.sumOf { it.items.size }
+                    Text(
+                        text = stringResource(R.string.gallery_total_stats, totalItems, formatFileSize(totalGallerySize)),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    // Подсказка текущей сортировки
+                    Text(
+                        text = when (sortOrder) {
+                            GallerySortOrder.NEWEST_FIRST -> stringResource(R.string.sort_newest_first)
+                            GallerySortOrder.OLDEST_FIRST -> stringResource(R.string.sort_oldest_first)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                // Кнопка сортировки
+                IconButton(
+                    onClick = {
+                        sortOrder = when (sortOrder) {
+                            GallerySortOrder.NEWEST_FIRST -> GallerySortOrder.OLDEST_FIRST
+                            GallerySortOrder.OLDEST_FIRST -> GallerySortOrder.NEWEST_FIRST
+                        }
+                        // Сбрасываем выделение при смене сортировки
+                        selectedItems = emptySet()
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_sort_arrows),
+                        contentDescription = stringResource(R.string.accessibility_sort_button),
+                        modifier = Modifier
+                            .size(24.dp)
+                            .rotate(if (sortOrder == GallerySortOrder.NEWEST_FIRST) 0f else 180f),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
 
-        if (items.isEmpty()) {
+        if (groupedItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.gallery_empty), color = Color.Gray, fontSize = 20.sp)
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.weight(1f).padding(2.dp)
+            LazyColumn(
+                modifier = Modifier.weight(1f)
             ) {
-                items(items) { item ->
-                    val isSelected = selectedItems.contains(item)
-                    Box(
-                        Modifier
-                            .padding(2.dp)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                if (isSelectionMode) {
-                                    selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                groupedItems.forEach { group ->
+                    // Заголовок с датой
+                    item {
+                        Text(
+                            text = group.dateLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+
+                    // Сетка фотографий для этой даты
+                    items(
+                        items = group.items.chunked(3),
+                        key = { chunk -> chunk.hashCode() }
+                    ) { rowItems ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                val isSelected = selectedItems.contains(item)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .padding(2.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (isSelectionMode) {
+                                                selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                                            }
+                                        }
+                                ) {
+                                    AsyncImage(
+                                        model = item.uri,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    if (!isSelectionMode) {
+                                        IconButton(
+                                            onClick = { shareImage(context, item.uri) },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(4.dp)
+                                                .size(28.dp)
+                                                .background(Color.Black.copy(0.4f), CircleShape)
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_share),
+                                                null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.primary.copy(0.5f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.ic_check),
+                                                null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                    ) {
-                        AsyncImage(
-                            model = item.uri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        if (!isSelectionMode) {
-                            IconButton(
-                                onClick = { shareImage(context, item.uri) },
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(4.dp)
-                                    .size(28.dp)
-                                    .background(Color.Black.copy(0.4f), CircleShape)
-                            ) {
-                                Icon(
-                                    painterResource(R.drawable.ic_share),
-                                    null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
+
+                            // Добавляем пустые места для выравнивания
+                            repeat(3 - rowItems.size) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .padding(2.dp)
                                 )
                             }
                         }
-                        if (isSelected) {
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.primary.copy(0.5f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painterResource(R.drawable.ic_check),
-                                    null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                            }
+                    }
+
+                    // Разделитель между группами (кроме последней)
+                    if (group != groupedItems.last()) {
+                        item {
+                            Divider(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
                         }
                     }
                 }
