@@ -86,4 +86,78 @@
     <string name="toast_skipped">Skipped (already exist): %d</string>
     <string name="toast_errors">Errors: %d</string>
 
+    <string name="btn_share_selected">Share (%1$d)</string>
+    <string name="dialog_share_title">Share?</string>
+    <string name="dialog_share_text">Share selected images (%1$d)?</string>
+    <string name="btn_confirm_share">Share</string>
+    <string name="share_multiple_title">Share images</string>
+    <string name="toast_saved_one">Image saved</string>
+    <string name="toast_saved_count">Saved: %d</string>
+    <string name="zip_invalid_images">Invalid: %d</string>
+    <string name="error_invalid_image">Invalid image</string>
+    <string name="error_invalid_image_details">Image is corrupted or unsupported</string>
+
+    <string name="storage_usage_title">Storage Usage</string>
+    <string name="storage_legend_cache">Cache</string>
+    <string name="storage_legend_gallery">Gallery</string>
+    <string name="storage_legend_archives">Archives</string>
+    <string name="storage_detail_cache">Coil Cache</string>
+    <string name="storage_detail_gallery">Gallery</string>
+    <string name="storage_detail_archives">Archives</string>
+    <string name="storage_detail_total_app">Total App Usage</string>
+    <string name="storage_detail_total_device">Total Device Used</string>
+    <string name="btn_clear_all_cache">Clear All Cache</string>
+    <string name="theme_mode_label">Theme Mode</string>
+    <string name="storage_progress_label">App uses</string>
+    <string name="storage_app_usage_ratio">App usage: %1$s of %2$s (%3$d%%)</string>
+    <string name="storage_legend_device">Total device</string>
+    <string name="storage_legend_device_used">Device used</string>
+    <string name="storage_legend_device_free">Device free</string>
+    <string name="storage_detail_device_used">Device used</string>
+    <string name="storage_detail_device_free">Device free</string>
+    <string name="nothing_selected_hint">Select at least one picture</string>
+    <string name="error_imageloader_not_found">Could not get image loader</string>
+    <string name="error_diskcache_unavailable">Image cache is not available</string>
+    <string name="toast_zip_no_images_added">No images were added to archive (all missing from cache)</string>
+    <string name="autopaste_link">The link from the clipboard was inserted automatically</string>
+    <string name="paste_from_clipboard">Paste from clipboard</string>
+    <string name="parse_scanning_comments">Comments scanned: %1$d</string>
+    <string name="parse_found_so_far">Images found: %1$d</string>
+
+    <!-- После завершения -->
+    <string name="parse_result_unique">Unique images found: %1$d</string>
+    <string name="parse_result_ready">Done! %1$d unique images</string>
+
+    <string name="error_invalid_tiktok_url">Invalid TikTok link. Please check the link format.</string>
+    <string name="error_tiktok_unreachable">TikTok is unavailable. Please check your internet connection.</string>
+    <string name="error_api_unreachable">Parsing server is unavailable. Please try again later.</string>
+    <string name="error_url_unreachable">The link is not working or has been removed.</string>
+    <string name="error_api_timeout">Server is not responding. Please try again later.</string>
+    <string name="error_api_request">Connection error with the parsing server.</string>
+    <string name="error_no_task_id">Server error: task ID not received.</string>
+    <string name="error_parse_timeout">Parsing took too long. Please try a different link.</string>
+    <string name="parse_failed">Failed to get data. The video may have been deleted or hidden.</string>
+    <string name="parse_completed">Done! Found %d images</string>
+    <string name="storage_summary">App uses %1$s (%3$d%% of total storage)</string>
+    <string name="storage_device_title">Overall Device Storage</string>
+    <string name="storage_device_used">Used</string>
+    <string name="storage_device_free">Free</string>
+    <string name="storage_app_title">App Storage Breakdown</string>
+    <string name="storage_app_empty">App doesn\'t use storage yet</string>
+    <string name="storage_details_title">Detailed Statistics</string>
+    <string name="storage_detail_device_total">Total Device Storage</string>
+
+    <string name="storage_detail_app_total">Total App Storage</string>
+
+    <string name="checking_connections">Checking connection…</string>
+
+    <string name="error_api_not_found">Server not found. Check your settings.</string>
+    <string name="error_api_server_error">Server error. Please try again later.</string>
+    <string name="error_api_unavailable">Server is temporarily unavailable.</string>
+
+    <string name="error_url_not_found">Link not found or has been removed.</string>
+    <string name="error_url_gone">Content at this link has been deleted.</string>
+    <string name="error_url_forbidden">Access to content is forbidden.</string>
+    <string name="error_url_rate_limit">Too many requests. Please wait.</string>
+
 </resources>

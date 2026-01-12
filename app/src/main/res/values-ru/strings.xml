@@ -88,4 +88,77 @@
     <string name="toast_skipped">Пропущено (уже есть): %d</string>
     <string name="toast_errors">Ошибок: %d</string>
 
+    <string name="btn_share_selected">Поделиться (%1$d)</string>
+    <string name="dialog_share_title">Поделиться?</string>
+    <string name="dialog_share_text">Поделиться выбранными картинками (%1$d шт.)?</string>
+    <string name="btn_confirm_share">Поделиться</string>
+    <string name="share_multiple_title">Поделиться картинками</string>
+
+    <string name="toast_saved_one">Картинка сохранена</string>
+    <string name="toast_saved_count">Сохранено: %d</string>
+    <string name="zip_invalid_images">Битых: %d</string>
+    <string name="error_invalid_image">Битая картинка</string>
+    <string name="error_invalid_image_details">Картинка повреждена или не поддерживается</string>
+
+    <string name="storage_usage_title">Занятое место</string>
+    <string name="storage_legend_cache">Кэш</string>
+    <string name="storage_legend_gallery">Галерея</string>
+    <string name="storage_legend_archives">Архивы</string>
+    <string name="storage_detail_cache">Кэш Coil</string>
+    <string name="storage_detail_gallery">Галерея (Pictures/PicsTok)</string>
+    <string name="storage_detail_archives">Архивы (Documents/PicsTok)</string>
+    <string name="storage_detail_total_app">Всего приложение</string>
+    <string name="storage_detail_total_device">Всего занято на устройстве</string>
+    <string name="storage_progress_label">Приложение использует</string>
+    <string name="storage_app_usage_ratio">Использование приложения: %1$s из %2$s (%3$d%%)</string>
+    <string name="storage_legend_device">Всего на устройстве</string>
+    <string name="storage_legend_device_used">Занято на устройстве</string>
+    <string name="storage_legend_device_free">Свободно на устройстве</string>
+    <string name="storage_detail_device_used">Занято на устройстве</string>
+    <string name="storage_detail_device_free">Свободно на устройстве</string>
+    <string name="nothing_selected_hint">Выберите хотя бы одну картинку</string>
+    <string name="error_imageloader_not_found">Не удалось получить загрузчик изображений</string>
+    <string name="error_diskcache_unavailable">Кэш изображений недоступен</string>
+    <string name="toast_zip_no_images_added">В архив не добавлено ни одной картинки (все отсутствуют в кэше)</string>
+
+    <string name="zip_no_cached_images">Нет кэшированных изображений. Прокрутите и загрузите их сначала.</string>
+    <string name="autopaste_link">Ссылка из буфера обмена вставилась автоматически</string>
+    <string name="paste_from_clipboard">Вставить из буфера обмена</string>
+    <string name="parse_scanning_comments">Проверено комментариев: %1$d</string>
+    <string name="parse_found_so_far">Найдено картинок: %1$d</string>
+    <string name="parse_result_unique">Найдено уникальных картинок: %1$d</string>
+    <string name="parse_result_ready">Готово! %1$d уникальных картинок</string>
+    <string name="error_invalid_tiktok_url">Неверная ссылка TikTok. Проверьте формат ссылки.</string>
+    <string name="error_tiktok_unreachable">TikTok недоступен. Проверьте интернет-соединение.</string>
+    <string name="error_api_unreachable">Сервер парсинга недоступен. Попробуйте позже.</string>
+    <string name="error_url_unreachable">Ссылка не работает или была удалена.</string>
+    <string name="error_api_timeout">Сервер не отвечает. Попробуйте позже.</string>
+    <string name="error_api_request">Ошибка соединения с сервером парсинга.</string>
+    <string name="error_no_task_id">Ошибка сервера: не получен ID задачи.</string>
+    <string name="error_parse_timeout">Парсинг занял слишком много времени. Попробуйте другую ссылку.</string>
+    <string name="parse_failed">Не удалось получить данные. Возможно, видео было удалено или скрыто.</string>
+    <string name="parse_completed">Готово! Найдено %d изображений</string> дай строки на ангглийском
+
+    <string name="storage_summary">Приложение использует %1$s (%3$d%% от общего объема)</string>
+    <string name="storage_device_title">Общее использование устройства</string>
+    <string name="storage_device_used">Занято</string>
+    <string name="storage_device_free">Свободно</string>
+    <string name="storage_app_title">Распределение внутри приложения</string>
+    <string name="storage_app_empty">Приложение пока не использует хранилище</string>
+    <string name="storage_details_title">Детальная статистика</string>
+    <string name="storage_detail_device_total">Общий объем устройства</string>
+
+    <string name="storage_detail_app_total">Общий объем приложения</string>
+
+    <string name="checking_connections">Проверяем соединение…</string>
+
+    <string name="error_api_not_found">Сервер не найден. Проверьте настройки.</string>
+    <string name="error_api_server_error">Ошибка сервера. Попробуйте позже.</string>
+    <string name="error_api_unavailable">Сервер временно недоступен.</string>
+
+    <string name="error_url_not_found">Ссылка не найдена или удалена.</string>
+    <string name="error_url_gone">Контент по ссылке был удален.</string>
+    <string name="error_url_forbidden">Доступ к контенту запрещен.</string>
+    <string name="error_url_rate_limit">Слишком много запросов. Подождите.</string> дай на инглише
+
 </resources>
