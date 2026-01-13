@@ -67,7 +67,7 @@
     <string name="dialog_nothing_selected_text">You haven\'t selected any images. Download all suitable images?</string>
     <string name="btn_download_all_anyway">Yes, all</string>
     <string name="btn_selection_mode">Selection</string>
-    <string name="selection_count">Selected: %1$</string>
+    <string name="selection_count">Selected: %1$d</string>
     <string name="btn_download">Download</string>
     <string name="btn_zip_short">ZIP</string>
     <string name="btn_cancel_selection">Cancel select</string>
@@ -172,6 +172,12 @@
     <string name="accessibility_filter_fab">Filter button. Tap to change content type</string>
     <string name="current_filter">Current: %s</string>
 
+    <!-- Error messages -->
+    <string name="error_no_video_id">Failed to extract video ID</string>
+    <string name="error_server_error">Server error</string>
+    <string name="error_network">Network error</string>
+
+    <!-- Parsing status messages -->
     <string name="parse_init">Initializing...</string>
     <string name="parse_extracting_video_id">Extracting video ID...</string>
     <string name="parse_connecting_to_tiktok">Connecting to TikTok...</string>
@@ -183,8 +189,27 @@
     <string name="parse_extracting_metadata">Extracting metadata...</string>
     <string name="parse_checking_api">Checking API availability...</string>
     <string name="parse_downloading_comments">Downloading comments...</string>
-    <string name="parse_scanning_media">Scanning for media...</string>
+    <string name="parse_scanning_media">Scanning media...</string>
     <string name="parse_removing_duplicates">Removing duplicates...</string>
     <string name="parse_finalizing">Finalizing...</string>
+
+    <!-- General statuses -->
+    <string name="status_initializing">Initializing</string>
+    <string name="status_processing">Processing</string>
+    <string name="status_completed">Completed</string>
+    <string name="status_error">Error</string>
+
+    <string name="error_pagination">Loading error: %s</string>
+    <string name="success_pagination">All images is loaded</string>
+    <string name="parse_in_progress">Working...</string>
+
+    <string name="language_label">Language</string>
+    <string name="btn_select">Select</string>
+    <string name="language_dialog_title">Select Language</string>
+    <string name="language_system">System Language</string>
+    <string name="language_russian">Russian</string>
+    <string name="language_english">English</string>
+    <string name="btn_ok">OK</string>
+
 
 </resources>

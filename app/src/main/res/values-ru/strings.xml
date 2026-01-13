@@ -174,13 +174,18 @@
     <string name="accessibility_filter_fab">Кнопка фильтра. Нажмите для изменения типа контента</string>
     <string name="current_filter">Сейчас: %s</string>
 
+    <string name="error_no_video_id">Не удалось извлечь ID видео</string>
+    <string name="error_server_error">Ошибка сервера</string>
+    <string name="error_network">Ошибка сети</string>
+
+    <!-- Статусы парсинга (у вас уже есть) -->
     <string name="parse_init">Инициализация...</string>
     <string name="parse_extracting_video_id">Извлекаем ID видео...</string>
     <string name="parse_connecting_to_tiktok">Подключаемся к TikTok...</string>
     <string name="parse_finding_images">Ищем изображения...</string>
     <string name="parse_filtering_images">Фильтруем изображения...</string>
     <string name="parse_validating_images">Проверяем изображения...</string>
-    <string name="parse_completed_with_count">Найдено: %1$d изображений</string>
+    <string name="parse_completed_with_count">Найдено картинок: %1$d</string>
     <string name="parse_no_images_found">Изображения не найдены</string>
     <string name="parse_extracting_metadata">Извлекаем метаданные...</string>
     <string name="parse_checking_api">Проверяем доступность API...</string>
@@ -188,5 +193,24 @@
     <string name="parse_scanning_media">Сканируем медиа...</string>
     <string name="parse_removing_duplicates">Удаляем дубликаты...</string>
     <string name="parse_finalizing">Завершаем...</string>
+
+    <!-- Общие статусы -->
+    <string name="status_initializing">Инициализация</string>
+    <string name="status_processing">В процессе</string>
+    <string name="status_completed">Завершено</string>
+    <string name="status_error">Ошибка</string>
+
+    <string name="error_pagination">Ошибка загрузки: %s</string>
+    <string name="success_pagination">Все картинки загружены</string>
+    <string name="parse_in_progress">В процессе...</string>
+
+    <string name="language_label">Язык</string>
+    <string name="btn_select">Выбрать</string>
+    <string name="language_dialog_title">Выберите язык</string>
+    <string name="language_system">Язык системы</string>
+    <string name="language_russian">Русский</string>
+    <string name="language_english">Английский</string>
+    <string name="btn_ok">OK</string>
+
 
 </resources>
