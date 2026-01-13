@@ -102,7 +102,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.appcompat.app.AppCompatDelegate
 
-
+private const val URL_INPUT_MAX_LENGTH = 35
 // --- API ---
 interface TikTokApi {
     @POST("parse")
@@ -337,6 +337,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(state: ParserState, api: TikTokApi) {
+    val context = LocalContext.current
     var showSettings by remember { mutableStateOf(false) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedSize by remember { mutableLongStateOf(0L) }
@@ -409,7 +410,21 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
                         Text(stringResource(R.string.app_name), fontWeight = FontWeight.ExtraBold)
                     },
                     actions = {
-                        IconButton(onClick = { showSettings = true }) {
+                        IconButton(
+                            onClick = {
+                                if (!state.isWorking) {
+                                    showSettings = true
+                                } else {
+                                    // Показываем сообщение о блокировке
+                                    Toast.makeText(
+                                        context, // ← Используем context из области видимости
+                                        context.getString(R.string.settings_disabled_during_parsing),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            enabled = !state.isWorking // ← Блокировка во время парсинга
+                        ) {
                             Icon(painterResource(R.drawable.ic_settings), null)
                         }
                     }
@@ -434,29 +449,56 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
                 NavigationBarItem(
                     selected = state.currentTab == 0,
                     onClick = {
-                        state.currentTab = 0
-                        isSelectionMode = false
+                        if (!state.isWorking) {
+                            state.currentTab = 0
+                            isSelectionMode = false
+                        } else {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.navigation_disabled_during_parsing),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
                     icon = { Icon(painterResource(R.drawable.ic_nav_parser), null) },
-                    label = { Text(stringResource(R.string.tab_parser)) }
+                    label = { Text(stringResource(R.string.tab_parser)) },
+                    enabled = !state.isWorking
                 )
                 NavigationBarItem(
                     selected = state.currentTab == 1,
                     onClick = {
-                        state.currentTab = 1
-                        isSelectionMode = false
+                        if (!state.isWorking) {
+                            state.currentTab = 1
+                            isSelectionMode = false
+                        } else {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.navigation_disabled_during_parsing),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
                     icon = { Icon(painterResource(R.drawable.ic_nav_gallery), null) },
-                    label = { Text(stringResource(R.string.tab_gallery)) }
+                    label = { Text(stringResource(R.string.tab_gallery)) },
+                    enabled = !state.isWorking
                 )
                 NavigationBarItem(
                     selected = state.currentTab == 2,
                     onClick = {
-                        state.currentTab = 2
-                        isSelectionMode = false
+                        if (!state.isWorking) {
+                            state.currentTab = 2
+                            isSelectionMode = false
+                        } else {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.navigation_disabled_during_parsing),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
                     icon = { Icon(painterResource(R.drawable.ic_archive), null) },
-                    label = { Text(stringResource(R.string.tab_archives)) }
+                    label = { Text(stringResource(R.string.tab_archives)) },
+                    enabled = !state.isWorking
                 )
             }
         }
@@ -1085,8 +1127,16 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                     OutlinedTextField(
                         value = state.url,
-                        onValueChange = { state.url = it },
-                        label = { Text(stringResource(R.string.input_label)) },
+                        onValueChange = {
+                            if (it.length <= URL_INPUT_MAX_LENGTH) {
+                                state.url = it
+                            }
+                        },
+                        label = {
+                            Text(
+                                stringResource(R.string.input_label)
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         trailingIcon = {

@@ -208,6 +208,8 @@
     <string name="language_russian">Russian</string>
     <string name="language_english">English</string>
     <string name="btn_ok">OK</string>
+    <string name="settings_disabled_during_parsing">Settings not available while parsing</string>
+    <string name="navigation_disabled_during_parsing">Navigation not availvable while parsing</string>
 
 
 </resources>

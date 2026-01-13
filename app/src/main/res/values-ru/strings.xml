@@ -211,6 +211,8 @@
     <string name="language_russian">Русский</string>
     <string name="language_english">Английский</string>
     <string name="btn_ok">OK</string>
+    <string name="settings_disabled_during_parsing">Настройки недоступны во время парсинга</string>
+    <string name="navigation_disabled_during_parsing">Навигация недоступна во время парсинга</string>
 
 
 </resources>
