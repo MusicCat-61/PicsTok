@@ -165,4 +165,26 @@
     <string name="sort_order_yesterday">Yesterday</string>
     <string name="accessibility_sort_button">Sort button. Press to change order</string>
 
+    <string name="filter_all">All</string>
+    <string name="filter_gif_only">GIF only</string>
+    <string name="filter_images_only">Images only</string>
+    <string name="filter_title">Filter content</string>
+    <string name="accessibility_filter_fab">Filter button. Tap to change content type</string>
+    <string name="current_filter">Current: %s</string>
+
+    <string name="parse_init">Initializing...</string>
+    <string name="parse_extracting_video_id">Extracting video ID...</string>
+    <string name="parse_connecting_to_tiktok">Connecting to TikTok...</string>
+    <string name="parse_finding_images">Finding images...</string>
+    <string name="parse_filtering_images">Filtering images...</string>
+    <string name="parse_validating_images">Validating images...</string>
+    <string name="parse_completed_with_count">Found: %1$d images</string>
+    <string name="parse_no_images_found">No images found</string>
+    <string name="parse_extracting_metadata">Extracting metadata...</string>
+    <string name="parse_checking_api">Checking API availability...</string>
+    <string name="parse_downloading_comments">Downloading comments...</string>
+    <string name="parse_scanning_media">Scanning for media...</string>
+    <string name="parse_removing_duplicates">Removing duplicates...</string>
+    <string name="parse_finalizing">Finalizing...</string>
+
 </resources>
