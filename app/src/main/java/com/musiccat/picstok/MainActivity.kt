@@ -613,7 +613,6 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
 
         pollingJob = scope.launch {
             try {
-                // Устанавливаем таймаут для всего процесса парсинга
                 withTimeoutOrNull(180000) { // 3 минуты общий таймаут
 
                     // Этап 1: Инициализация
@@ -641,7 +640,6 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                     }
 
                     val taskId = response["task_id"] ?: throw Exception(context.getString(R.string.error_no_task_id))
-
                     Log.d("Parser", "Начали парсинг, task_id: $taskId")
 
                     // Этап 3: Извлечение ID видео
@@ -685,115 +683,30 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                             }
                         }
 
-                        // Фильтруем пустые/некорректные URL
-                        val validUrls = urls.filter {
-                            it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://"))
-                        }.distinct()
+                        // УБИРАЕМ ФИЛЬТРАЦИЮ В UI - принимаем все URL от сервера
+                        // Просто сохраняем ВСЕ URL, которые пришли с бэкенда
 
-                        // Сохраняем ВСЕ найденные URL
-                        state.resultUrls = validUrls
+                        val uniqueUrls = urls.distinct()
+                        state.resultUrls = urls.distinct()
                         state.processedCount = processed
 
-                        // Проверяем только НОВЫЕ URL
-                        val newUrls = validUrls.filter { it !in checkedUrlsCache }
-
-                        if (newUrls.isNotEmpty()) {
-                            checkedUrlsCache = checkedUrlsCache + newUrls
-
-                            // Проверяем новые URL асинхронно с таймаутом
-                            val chunkResults = newUrls.chunked(5).map { chunk ->
-                                async(Dispatchers.IO) {
-                                    chunk.filter { imageUrl ->
-                                        try {
-                                            withTimeout(5000) {
-                                                val connection = URL(imageUrl).openConnection() as HttpURLConnection
-                                                connection.requestMethod = "HEAD"
-                                                connection.connectTimeout = 2000
-                                                connection.readTimeout = 2000
-                                                connection.connect()
-
-                                                val contentType = connection.contentType ?: ""
-                                                val contentLength = connection.contentLength
-
-                                                connection.disconnect()
-
-                                                contentType.startsWith("image/") && contentLength > 100
-                                            }
-                                        } catch (e: TimeoutCancellationException) {
-                                            Log.w("ImageCheck", "Таймаут проверки изображения: $imageUrl")
-                                            false
-                                        } catch (e: Exception) {
-                                            // Если HEAD не работает, пробуем GET первых байтов
-                                            try {
-                                                withTimeout(5000) {
-                                                    val connection = URL(imageUrl).openConnection() as HttpURLConnection
-                                                    connection.connectTimeout = 3000
-                                                    connection.readTimeout = 3000
-                                                    connection.connect()
-
-                                                    val contentType = connection.contentType ?: ""
-                                                    val input = connection.inputStream
-                                                    val buffer = ByteArray(128)
-                                                    val bytesRead = input.read(buffer)
-                                                    input.close()
-                                                    connection.disconnect()
-
-                                                    contentType.startsWith("image/") && bytesRead > 0
-                                                }
-                                            } catch (e2: Exception) {
-                                                false
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Собираем все результаты
-                            chunkResults.forEach { deferred ->
-                                val validChunk = deferred.await()
-                                if (validChunk.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) {
-                                        validImageUrls = validImageUrls + validChunk
-                                        state.foundCount = validImageUrls.size
-                                    }
-                                }
-                            }
+                        // ОБНОВЛЯЕМ validImageUrls сразу - не ждем проверок
+                        withContext(Dispatchers.Main) {
+                            validImageUrls = uniqueUrls
+                            state.foundCount = uniqueUrls.size
+                            Log.d("Parser", "Получено URL от сервера: ${urls.size}, уникальных: ${validImageUrls.size}")
                         }
 
                         if (status == "completed") {
                             // Этап завершения
                             withContext(Dispatchers.Main) {
                                 state.parseStage = context.getString(R.string.parse_finalizing)
-                            }
 
-                            // Финальная проверка всех оставшихся картинок
-                            val finalUrls = validUrls.filter { it !in checkedUrlsCache }
-                            if (finalUrls.isNotEmpty()) {
-                                val finalValidUrls = finalUrls.filter { imageUrl ->
-                                    try {
-                                        withTimeout(7000) {
-                                            val connection = URL(imageUrl).openConnection() as HttpURLConnection
-                                            connection.requestMethod = "HEAD"
-                                            connection.connectTimeout = 3000
-                                            connection.readTimeout = 3000
-                                            connection.connect()
+                                // ФИНАЛЬНОЕ СОХРАНЕНИЕ - все что пришло с сервера
+                                validImageUrls = state.resultUrls
+                                state.foundCount = validImageUrls.size
 
-                                            val contentType = connection.contentType ?: ""
-                                            val contentLength = connection.contentLength
-
-                                            connection.disconnect()
-
-                                            contentType.startsWith("image/") && contentLength > 100
-                                        }
-                                    } catch (e: Exception) {
-                                        false
-                                    }
-                                }
-
-                                withContext(Dispatchers.Main) {
-                                    validImageUrls = validImageUrls + finalValidUrls
-                                    state.foundCount = validImageUrls.size
-                                }
+                                Log.d("Parser", "Парсинг завершен. Итоговое количество изображений: ${state.foundCount}")
                             }
 
                             withContext(Dispatchers.Main) {
@@ -2852,11 +2765,7 @@ private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
         val contentType = connection.contentType ?: ""
         val contentLength = connection.contentLength
 
-        if (!contentType.startsWith("image/")) {
-            connection.disconnect()
-            Log.d("PicsTok", "Invalid content type: $contentType")
-            return 0
-        }
+
 
         Log.d("PicsTok", "📊 Content-Type: $contentType, Size: $contentLength bytes")
 
@@ -2886,10 +2795,7 @@ private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
             }
         }
 
-        if (!isValidImage(bytes, url)) {
-            Log.d("PicsTok", "❌ Invalid image - failed signature check")
-            return 0
-        }
+
 
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
@@ -3029,16 +2935,9 @@ private suspend fun preCacheAllImages(
                             bitmap.compress(format, 90, outputStream)
                             val byteArray = outputStream.toByteArray()
 
-                            if (byteArray.isNotEmpty() && isValidImage(byteArray, url)) {
+                            if (byteArray.isNotEmpty())  {
                                 // Сохраняем в кэш
-                                val MAX_CACHE_SIZE = 1000
-                                if (state.cachedImages.size >= MAX_CACHE_SIZE) {
-                                    val oldest = state.cachedImages.entries
-                                        .minByOrNull { it.value.timestamp }
-                                    if (oldest != null) {
-                                        state.cachedImages.remove(oldest.key)
-                                    }
-                                }
+
 
                                 state.cachedImages[url] = CachedImage(
                                     url = url,
@@ -3174,11 +3073,7 @@ private suspend fun downloadAllAsZip(
                         return@forEachIndexed
                     }
 
-                    if (!isValidImage(imageData, url)) {
-                        Log.w("ZipCreate", "Данные из кэша не прошли проверку: $url")
-                        invalidCount++
-                        return@forEachIndexed
-                    }
+
 
                     // Определяем расширение
                     val extension = when {
