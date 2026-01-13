@@ -2,6 +2,7 @@ package com.musiccat.picstok
 
 import android.app.Application
 import android.content.*
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -71,6 +72,7 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import android.graphics.BitmapFactory
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.text.style.TextOverflow
 import com.radzivon.bartoshyk.avif.coder.HeifCoder
 import java.io.ByteArrayOutputStream
@@ -98,6 +100,7 @@ import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.appcompat.app.AppCompatDelegate
 
 
 // --- API ---
@@ -169,6 +172,8 @@ class ParserState {
 
     var parseStage by mutableStateOf("")
 
+    var appLanguage by mutableStateOf("system")
+
     // Очистка этапа при новом парсинге
     fun clearCache() {
         cachedImages.clear()
@@ -178,11 +183,43 @@ class ParserState {
 
 class MainActivity : ComponentActivity() {
     lateinit var imageLoader: ImageLoader
+    private var currentLanguage = "system"
+
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = newBase.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val language = prefs.getString("app_language", "system") ?: "system"
+
+        val locale = when (language) {
+            "ru" -> Locale("ru")
+            "en" -> Locale.ENGLISH
+            else -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    newBase.resources.configuration.locales[0]
+                } else {
+                    @Suppress("DEPRECATION")
+                    newBase.resources.configuration.locale
+                }
+            }
+        }
+
+        val config = Configuration(newBase.resources.configuration)
+        config.setLocale(locale)
+
+        val context = newBase.createConfigurationContext(config)
+        super.attachBaseContext(context)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Загрузка настроек
         val prefs = getSharedPreferences("app_settings", MODE_PRIVATE)
+        val initialLanguage = prefs.getString("app_language", "system") ?: "system"
+        currentLanguage = initialLanguage
+
+
+
+        applyLanguage(initialLanguage)
         val initialTheme = prefs.getString("theme_mode", "Системная") ?: "Системная"
         val initialMaterialYou = prefs.getBoolean("material_you", false)
 
@@ -222,16 +259,37 @@ class MainActivity : ComponentActivity() {
 
 
         setContent {
-            val state = remember { ParserState().apply {
-                themeMode = initialTheme
-                useMaterialYou = initialMaterialYou
-            }}
+            val state = remember {
+                ParserState().apply {
+                    themeMode = initialTheme
+                    useMaterialYou = initialMaterialYou
+                    appLanguage = initialLanguage
+                }
+            }
 
-            // Сохранение настроек при изменении
+
+            LaunchedEffect(state.appLanguage) {
+                if (state.appLanguage != currentLanguage) {
+                    currentLanguage = state.appLanguage
+
+                    // Сохраняем в настройки
+                    prefs.edit {
+                        putString("app_language", state.appLanguage)
+                    }
+
+                    // Небольшая задержка для плавности
+                    delay(200)
+
+                    // Перезапускаем активити
+                    recreate()
+                }
+            }
+
+            // Сохранение других настроек
             LaunchedEffect(state.themeMode, state.useMaterialYou) {
                 prefs.edit {
                     putString("theme_mode", state.themeMode)
-                        .putBoolean("material_you", state.useMaterialYou)
+                    putBoolean("material_you", state.useMaterialYou)
                 }
             }
 
@@ -241,6 +299,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun applyLanguage(languageCode: String) {
+        val locale = when (languageCode) {
+            "ru" -> Locale("ru")
+            "en" -> Locale.ENGLISH
+            else -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    resources.configuration.locales[0]
+                } else {
+                    @Suppress("DEPRECATION")
+                    resources.configuration.locale
+                }
+            }
+        }
+
+        Locale.setDefault(locale)
+
+        val resources = resources
+        val configuration = Configuration(resources.configuration)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            configuration.setLocale(locale)
+            createConfigurationContext(configuration)
+        } else {
+            @Suppress("DEPRECATION")
+            configuration.locale = locale
+            resources.updateConfiguration(configuration, resources.displayMetrics)
+        }
+
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(configuration, resources.displayMetrics)
     }
 }
 
@@ -460,9 +550,7 @@ fun ParsingProgress(state: ParserState) {
         R.string.parse_finalizing
     )
 
-    val currentStageIndex = stages.indexOfFirst {
-        stringResource(it) == state.parseStage
-    }.coerceAtLeast(0)
+
 
     Column(
         modifier = Modifier
@@ -478,8 +566,7 @@ fun ParsingProgress(state: ParserState) {
         LinearProgressIndicator(
             progress = {
                 if (state.isFinished) 1f
-                else if (stages.isEmpty()) 0f
-                else (currentStageIndex + 1).toFloat() / stages.size
+                else state.downloadProgress.coerceAtLeast(0f)
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -511,16 +598,83 @@ fun ParsingProgress(state: ParserState) {
     }
 }
 
-// Используйте это вместо простого Text в UI:
+
 
 @Composable
 fun ParserScreen(state: ParserState, api: TikTokApi) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lazyGridState = rememberLazyGridState(initialFirstVisibleItemIndex = state.scrollState)
+
+    val paginationHelper = remember {
+        PaginationHelper<String>(
+            pageSize = 30,
+            prefetchDistance = 5,
+            maxCachedPages = 3
+        )
+    }
+
+    LaunchedEffect(state.isWorking) {
+        paginationHelper.setBlocked(state.isWorking)
+
+        // Если парсинг завершился, обновляем totalItems
+        if (!state.isWorking && state.resultUrls.isNotEmpty()) {
+            paginationHelper.setTotalItems(state.resultUrls.size)
+
+            // Загружаем первую страницу, если еще ничего не загружено
+            if (paginationHelper.items.isEmpty()) {
+                paginationHelper.loadNextPage(scope) { page, pageSize ->
+                    val start = page * pageSize
+                    val end = minOf(start + pageSize, state.resultUrls.size)
+                    state.resultUrls.slice(start until end)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(state.resultUrls.size) {
+        if (state.resultUrls.isNotEmpty()) {
+            paginationHelper.setTotalItems(state.resultUrls.size)
+        }
+    }
+
+    LaunchedEffect(state.isFinished, state.resultUrls) {
+        if (state.isFinished && state.resultUrls.isNotEmpty() && paginationHelper.items.isEmpty()) {
+            paginationHelper.loadNextPage(scope) { page, pageSize ->
+                val start = page * pageSize
+                val end = minOf(start + pageSize, state.resultUrls.size)
+                state.resultUrls.slice(start until end)
+            }
+        }
+    }
+
     LaunchedEffect(lazyGridState.firstVisibleItemIndex) {
         state.scrollState = lazyGridState.firstVisibleItemIndex
     }
+
+    LaunchedEffect(lazyGridState) {
+        snapshotFlow { lazyGridState.layoutInfo.visibleItemsInfo }
+            .collect { visibleItems ->
+                if (visibleItems.isNotEmpty() && !state.isWorking) { // ← ПРОВЕРКА
+                    val lastIndex = visibleItems.last().index
+                    if (paginationHelper.shouldLoadMore(lastIndex)) {
+                        paginationHelper.loadNextPage(scope) { page, pageSize ->
+                            val start = page * pageSize
+                            val end = minOf(start + pageSize, state.resultUrls.size)
+                            state.resultUrls.slice(start until end)
+                        }
+                    }
+                }
+            }
+    }
+
+    LaunchedEffect(state.isWorking) {
+        if (state.isWorking) {
+            paginationHelper.reset()
+        }
+    }
+
+
 
     val networkChecker = remember { NetworkChecker(context) }
 
@@ -531,7 +685,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var pollingJob by remember { mutableStateOf<Job?>(null) }
-    var selectedUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedUrls by remember { mutableStateOf(emptySet<String>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
     var validImageUrls by remember { mutableStateOf<List<String>>(emptyList()) }
     var showNothingSelectedDialog by remember { mutableStateOf(false) }
@@ -591,6 +745,43 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
             patterns.any { it.matches(url) }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    fun getLocalizedMessage(context: Context, key: String, params: Map<String, Any> = emptyMap()): String {
+        return when (key) {
+            // Статусы парсинга
+            "parse_init" -> context.getString(R.string.parse_init)
+            "parse_extracting_video_id" -> context.getString(R.string.parse_extracting_video_id)
+            "parse_connecting_to_tiktok" -> context.getString(R.string.parse_connecting_to_tiktok)
+            "parse_finding_images" -> context.getString(R.string.parse_finding_images)
+            "parse_filtering_images" -> context.getString(R.string.parse_filtering_images)
+            "parse_validating_images" -> context.getString(R.string.parse_validating_images)
+            "parse_completed_with_count" -> {
+                val count = params["count"] as? Int ?: params["found"] as? Int ?: 0
+                context.getString(R.string.parse_completed_with_count, count)
+            }
+            "parse_no_images_found" -> context.getString(R.string.parse_no_images_found)
+            "parse_extracting_metadata" -> context.getString(R.string.parse_extracting_metadata)
+            "parse_checking_api" -> context.getString(R.string.parse_checking_api)
+            "parse_downloading_comments" -> context.getString(R.string.parse_downloading_comments)
+            "parse_scanning_media" -> context.getString(R.string.parse_scanning_media)
+            "parse_removing_duplicates" -> context.getString(R.string.parse_removing_duplicates)
+            "parse_finalizing" -> context.getString(R.string.parse_finalizing)
+
+            // Ошибки
+            "error_no_video_id" -> context.getString(R.string.error_no_video_id)
+            "error_server_error" -> context.getString(R.string.error_server_error)
+            "error_network" -> context.getString(R.string.error_network)
+
+            // Общие статусы
+            "initializing" -> context.getString(R.string.status_initializing)
+            "processing" -> context.getString(R.string.status_processing)
+            "completed" -> context.getString(R.string.status_completed)
+            "error" -> context.getString(R.string.status_error)
+
+            // Если ключ не найден, возвращаем ключ (для отладки)
+            else -> key
         }
     }
 
@@ -661,18 +852,41 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         }
 
                         val status = res["status"] as? String
-                        val message = res["message"] as? String
+                        val messageKey = res["message_key"] as? String
+                        val messageParams = res["message_params"] as? Map<String, Any>
+                        val message = res["message"] as? String // Для обратной совместимости
                         val processed = (res["processed_comments"] as? Number)?.toInt() ?: 0
                         val urls = (res["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
 
                         // Обновляем этап парсинга из сообщения сервера
-                        if (message != null) {
-                            withContext(Dispatchers.Main) {
-                                state.parseStage = message
-                            }
-                        } else {
-                            // Локальные этапы на основе прогресса
-                            withContext(Dispatchers.Main) {
+                        withContext(Dispatchers.Main) {
+                            if (messageKey != null) {
+                                // Используем локализованное сообщение по ключу
+                                state.parseStage = getLocalizedMessage(context, messageKey, messageParams ?: emptyMap())
+                            } else if (message != null) {
+                                // Fallback для обратной совместимости (старый формат)
+                                // Пытаемся мапить русские сообщения на ключи
+                                val translatedMessage = when {
+                                    message.contains("Начинаем парсинг видео") -> context.getString(R.string.parse_init)
+                                    message.contains("Извлекаем ID видео") -> context.getString(R.string.parse_extracting_video_id)
+                                    message.contains("Начинаем парсинг комментариев") -> context.getString(R.string.parse_downloading_comments)
+                                    message.contains("Парсинг завершен") || message.contains("Найдено") -> {
+                                        val countMatch = Regex("""(\d+)""").find(message)
+                                        val count = countMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                                        context.getString(R.string.parse_completed_with_count, count)
+                                    }
+                                    message.contains("Обработано") && message.contains("комментариев") -> {
+                                        if (processed < 50) {
+                                            context.getString(R.string.parse_scanning_media)
+                                        } else {
+                                            context.getString(R.string.parse_filtering_images)
+                                        }
+                                    }
+                                    else -> message // Оставляем как есть, если не нашли маппинг
+                                }
+                                state.parseStage = translatedMessage
+                            } else {
+                                // Локальные этапы на основе прогресса (fallback)
                                 when {
                                     processed == 0 -> state.parseStage = context.getString(R.string.parse_downloading_comments)
                                     processed < 10 -> state.parseStage = context.getString(R.string.parse_scanning_media)
@@ -684,11 +898,17 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         }
 
                         // УБИРАЕМ ФИЛЬТРАЦИЮ В UI - принимаем все URL от сервера
-                        // Просто сохраняем ВСЕ URL, которые пришли с бэкенда
-
                         val uniqueUrls = urls.distinct()
                         state.resultUrls = urls.distinct()
                         state.processedCount = processed
+
+                        withContext(Dispatchers.Main) {
+                            if (paginationHelper.items.isEmpty() && uniqueUrls.isNotEmpty()) {
+                                paginationHelper.addItemsImmediately(
+                                    uniqueUrls.take(30)
+                                )
+                            }
+                        }
 
                         // ОБНОВЛЯЕМ validImageUrls сразу - не ждем проверок
                         withContext(Dispatchers.Main) {
@@ -700,7 +920,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         if (status == "completed") {
                             // Этап завершения
                             withContext(Dispatchers.Main) {
-                                state.parseStage = context.getString(R.string.parse_finalizing)
+                                state.parseStage = getLocalizedMessage(context, "parse_finalizing")
 
                                 // ФИНАЛЬНОЕ СОХРАНЕНИЕ - все что пришло с сервера
                                 validImageUrls = state.resultUrls
@@ -713,11 +933,15 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                                 state.isWorking = false
                                 state.isFinished = true
                                 state.url = ""
-                                state.parseStage = context.getString(R.string.parse_completed_with_count, state.foundCount)
+
+                                // Используем локализованное сообщение о завершении
+                                val finalMessageKey = messageKey ?: "parse_completed_with_count"
+                                val finalParams = messageParams ?: mapOf("count" to state.foundCount)
+                                state.parseStage = getLocalizedMessage(context, finalMessageKey, finalParams)
 
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.parse_completed, state.foundCount),
+                                    getLocalizedMessage(context, "parse_completed_with_count", mapOf("count" to state.foundCount)),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -728,10 +952,20 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         if (status == "failed" || status == "error") {
                             withContext(Dispatchers.Main) {
                                 state.isWorking = false
-                                state.parseStage = context.getString(R.string.parse_failed)
+                                state.parseStage = getLocalizedMessage(context, "error_server_error")
+
+                                // Пытаемся получить детальное сообщение об ошибке
+                                val errorMessage = if (messageKey != null) {
+                                    getLocalizedMessage(context, messageKey, messageParams ?: emptyMap())
+                                } else if (message != null) {
+                                    message
+                                } else {
+                                    context.getString(R.string.parse_failed)
+                                }
+
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.parse_failed),
+                                    errorMessage,
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -755,7 +989,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
             } catch (e: Exception) {
                 state.isWorking = false
                 withContext(Dispatchers.Main) {
-                    state.parseStage = e.message ?: context.getString(R.string.error_download)
+                    state.parseStage = getLocalizedMessage(context, "error_server_error")
                     Toast.makeText(
                         context,
                         e.message ?: context.getString(R.string.error_download),
@@ -805,12 +1039,9 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
 
     fun executeDownload(isZip: Boolean) {
         val urlsToProcess = when {
-            // Если в режиме выделения и есть выбранные
             isSelectionMode && selectedUrls.isNotEmpty() -> selectedUrls.toList()
-            // Если в режиме выделения, но ничего не выбрано - скачиваем все
-            isSelectionMode -> validImageUrls
-            // Если не в режиме выделения - скачиваем все
-            else -> validImageUrls
+            isSelectionMode -> paginationHelper.items // Используем загруженные элементы
+            else -> state.resultUrls // Полный список из состояния
         }
 
         // Немедленное выполнение если есть что скачивать
@@ -948,7 +1179,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                     modifier = Modifier.weight(1f).padding(top = 8.dp),
                     state = lazyGridState
                 ) {
-                    items(validImageUrls) { url ->
+                    items(paginationHelper.items) { url ->
                         val isSelected = selectedUrls.contains(url)
                         Box(
                             Modifier
@@ -958,160 +1189,6 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                                 .clickable {
                                     if (isSelectionMode) {
                                         selectedUrls = if (isSelected) selectedUrls - url else selectedUrls + url
-                                    } else {
-                                        // Логируем подробную информацию о конкретной картинке
-                                        Log.d("ImageClick", "🖱️ Tapped on image:")
-                                        Log.d("ImageClick", "   - URL: $url")
-                                        Log.d("ImageClick", "   - Is valid in list: ${validImageUrls.contains(url)}")
-                                        Log.d("ImageClick", "   - Is selected: $isSelected")
-                                        Log.d("ImageClick", "   - Index in list: ${validImageUrls.indexOf(url)}")
-                                        Log.d("ImageClick", "   - Total valid images: ${validImageUrls.size}")
-
-                                        // ───────────────────────────────────────────────
-                                        // Определяем формат с помощью нашей функции (без байт → используем эвристику)
-                                        // ───────────────────────────────────────────────
-                                        val fakeContentType = ""  // Здесь нет реального заголовка на этапе клика
-
-                                        val (estimatedMime, estimatedExt) = when {
-                                            // Самый частый случай TikTok комментариев в 2025–2026
-                                            url.contains("~tplv-") && url.endsWith(".image") -> {
-                                                Log.d("ImageClick", "   - Detected TikTok comment-style URL → assuming JPEG")
-                                                "image/jpeg" to ".jpg"
-                                            }
-
-                                            // Другие популярные TikTok/CDN паттерны (можно расширять)
-                                            url.contains("tiktokcdn") && url.contains("image") -> "image/jpeg" to ".jpg"
-
-                                            else -> {
-                                                // Если вдруг обычная ссылка с расширением — пробуем определить по ней
-                                                val extFromUrl = try {
-                                                    val path = url.substringAfterLast(".")
-                                                    if (path.length <= 10 && !path.contains("/") && !path.contains("?")) path.lowercase() else "unknown"
-                                                } catch (e: Exception) {
-                                                    "unknown"
-                                                }
-
-                                                val mimeByExt = when (extFromUrl) {
-                                                    "jpg", "jpeg", "jfif" -> "image/jpeg"
-                                                    "png" -> "image/png"
-                                                    "gif" -> "image/gif"
-                                                    "webp" -> "image/webp"
-                                                    "bmp" -> "image/bmp"
-                                                    "heic", "heif" -> "image/heic"
-                                                    else -> "unknown"
-                                                }
-
-                                                mimeByExt to if (extFromUrl != "unknown") ".$extFromUrl" else ".unknown"
-                                            }
-                                        }
-                                        scope.launch(Dispatchers.IO) {
-                                            try {
-                                                val connection = URL(url).openConnection() as HttpURLConnection
-                                                connection.requestMethod = "HEAD"
-                                                connection.connectTimeout = 5000
-                                                connection.readTimeout = 5000
-
-                                                // Те же заголовки, что и в AsyncImage
-                                                connection.setRequestProperty("Referer", "https://www.tiktok.com/")
-                                                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36")
-
-                                                val responseCode = connection.responseCode
-                                                val contentType = connection.contentType ?: "unknown"
-                                                val contentLength = connection.contentLength
-
-                                                connection.disconnect()
-
-                                                withContext(Dispatchers.Main) {
-                                                    Log.d("ImageDebug", "HEAD check for $url:")
-                                                    Log.d("ImageDebug", "   → Status: $responseCode")
-                                                    Log.d("ImageDebug", "   → Content-Type: $contentType")
-                                                    Log.d("ImageDebug", "   → Content-Length: $contentLength bytes")
-                                                }
-                                            } catch (e: Exception) {
-                                                withContext(Dispatchers.Main) {
-                                                    Log.e("ImageDebug", "HEAD check failed for $url: ${e.message}")
-                                                }
-                                            }
-                                        }
-
-                                        val extension = estimatedExt.removePrefix(".")
-                                        val mimeType = estimatedMime
-
-                                        Log.d("ImageClick", "   - Estimated Extension: .$extension (via determine logic)")
-                                        Log.d("ImageClick", "   - Estimated MIME type: $mimeType")
-
-                                        // Анализируем тип картинки по расширению (для красоты в логах)
-                                        val imageType = when (extension) {
-                                            "jpg", "jpeg", "jfif" -> "JPEG"
-                                            "png" -> "PNG"
-                                            "gif" -> "GIF"
-                                            "webp" -> "WebP"
-                                            "bmp" -> "BMP"
-                                            "heic", "heif" -> "HEIC/HEIF"
-                                            "tiff", "tif" -> "TIFF"
-                                            "ico" -> "ICO"
-                                            "svg" -> "SVG"
-                                            else -> "Unknown/Other (most likely JPEG from TikTok)"
-                                        }
-                                        Log.d("ImageClick", "   - Image type: $imageType")
-
-                                        // ───────────────────────────────────────────────
-                                        // Всё остальное остаётся без изменений
-                                        // ───────────────────────────────────────────────
-
-                                        val fileName = try {
-                                            val pathPart = url.split("?").firstOrNull() ?: url
-                                            val segments = pathPart.split("/")
-                                            if (segments.isNotEmpty()) segments.last() else "unknown"
-                                        } catch (e: Exception) {
-                                            "unknown"
-                                        }
-                                        Log.d("ImageClick", "   - File name: $fileName")
-
-                                        val hasSizeParam = url.contains("?") && (url.contains("size=") ||
-                                                url.contains("width=") || url.contains("height="))
-                                        Log.d("ImageClick", "   - Has size parameters: $hasSizeParam")
-
-                                        val isCdnUrl = url.contains("cdn.") || url.contains("cloudfront.") ||
-                                                url.contains("akamai.") || url.contains("cloudinary.") ||
-                                                url.contains("img.") || url.contains("images.")
-                                        Log.d("ImageClick", "   - Is CDN URL: $isCdnUrl")
-
-                                        val domain = try {
-                                            java.net.URL(url).host
-                                        } catch (e: Exception) {
-                                            "unknown"
-                                        }
-                                        Log.d("ImageClick", "   - Domain: $domain")
-
-                                        val protocol = if (url.startsWith("https://")) "HTTPS" else "HTTP"
-                                        Log.d("ImageClick", "   - Protocol: $protocol")
-
-                                        val hasQualityParam = url.contains("quality=") || url.contains("q=") ||
-                                                url.contains("compression=")
-                                        Log.d("ImageClick", "   - Has quality parameters: $hasQualityParam")
-
-                                        Log.d("ImageClick", "   - URL length: ${url.length} chars")
-
-                                        val hasVersion = url.contains("v=") || url.contains("version=") ||
-                                                url.contains("ver=") || url.contains("_v") ||
-                                                url.contains(Regex(".*v[0-9]+.*"))
-                                        Log.d("ImageClick", "   - Has version: $hasVersion")
-
-                                        val isStatic = !url.contains("?") || (url.contains("?") && !url.contains("&"))
-                                        Log.d("ImageClick", "   - Is static URL: $isStatic")
-
-                                        val isCacheable = extension in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp")
-                                        Log.d("ImageClick", "   - Is cacheable format: $isCacheable")
-
-                                        val hasNumericId = fileName.contains(Regex("\\d{5,}"))
-                                        Log.d("ImageClick", "   - Has numeric ID in filename: $hasNumericId")
-
-                                        val hasAuthToken = url.contains("token=") || url.contains("auth=") ||
-                                                url.contains("access_token=") || url.contains("api_key=")
-                                        Log.d("ImageClick", "   - Has auth token: $hasAuthToken")
-
-                                        Log.d("ImageClick", "=".repeat(50))
                                     }
                                 }
                         ) {
@@ -1232,6 +1309,62 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                             }
                         }
                     }
+
+                    if (state.isWorking && paginationHelper.items.isEmpty()) {
+                        item(span = { GridItemSpan(3) }) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(R.string.parse_in_progress),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    item(span = { GridItemSpan(3) }) {
+                        when (paginationHelper.state.value) {
+                            is PaginationState.LOADING -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(80.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                            is PaginationState.ERROR -> {
+                                val errorState = paginationHelper.state.value as PaginationState.ERROR
+                                Text(
+                                    text = context.getString(R.string.error_pagination, errorState.message),
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                )
+                            }
+                            is PaginationState.END -> {
+                                if (paginationHelper.items.isNotEmpty() && !state.isWorking) {
+                                    Text(
+                                        text = context.getString(R.string.success_pagination),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
+                                    )
+                                }
+                            }
+                            else -> {}
+                        }
+                    }
+
                 }
                 if (state.isFinished) Spacer(Modifier.height(90.dp))
             }
@@ -2259,6 +2392,116 @@ fun SettingsSheet(state: ParserState, onDismiss: () -> Unit) {
                 }
             )
 
+            Spacer(Modifier.height(16.dp))
+
+            // 3. ВЫБОР ЯЗЫКА
+            var showLanguageDialog by remember { mutableStateOf(false) }
+            var tempLanguage by remember { mutableStateOf(state.appLanguage) }
+
+            ListItem(
+                headlineContent = {
+                    Text(stringResource(R.string.language_label), fontSize = 16.sp)
+                },
+                supportingContent = {
+                    val currentLanguage = when (state.appLanguage) {
+                        "system" -> stringResource(R.string.language_system)
+                        "ru" -> stringResource(R.string.language_russian)
+                        "en" -> stringResource(R.string.language_english)
+                        else -> stringResource(R.string.language_system)
+                    }
+                    Text(currentLanguage, fontSize = 14.sp)
+                },
+                trailingContent = {
+                    Button(
+                        onClick = {
+                            tempLanguage = state.appLanguage // Сохраняем текущий язык
+                            showLanguageDialog = true
+                        },
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text(stringResource(R.string.btn_select))
+                    }
+                }
+            )
+
+            // Диалог выбора языка
+            if (showLanguageDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLanguageDialog = false },
+                    title = { Text(stringResource(R.string.language_dialog_title)) },
+                    text = {
+                        Column {
+                            // Системный язык
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { tempLanguage = "system" }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = tempLanguage == "system",
+                                    onClick = { tempLanguage = "system" }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.language_system), fontSize = 16.sp)
+                            }
+
+                            // Русский
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { tempLanguage = "ru" }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = tempLanguage == "ru",
+                                    onClick = { tempLanguage = "ru" }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.language_russian), fontSize = 16.sp)
+                            }
+
+                            // Английский
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { tempLanguage = "en" }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = tempLanguage == "en",
+                                    onClick = { tempLanguage = "en" }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.language_english), fontSize = 16.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            // Применяем язык только при нажатии OK
+                            if (state.appLanguage != tempLanguage) {
+                                state.appLanguage = tempLanguage
+                            }
+                            showLanguageDialog = false
+                        }) {
+                            Text(stringResource(R.string.btn_ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showLanguageDialog = false
+                        }) {
+                            Text(stringResource(R.string.btn_cancel))
+                        }
+                    }
+                )
+            }
+
+
             Spacer(Modifier.height(24.dp))
             Divider()
             Spacer(Modifier.height(24.dp))
@@ -2581,55 +2824,6 @@ private fun StorageDetailRow(label: String, size: Long, indent: Boolean = false)
 }
 
 
-
-private fun isValidImage(bytes: ByteArray, url: String): Boolean {
-    Log.d("PicsTok", "🔍 Checking image validity: ${bytes.size} bytes (URL: $url)")
-
-    if (bytes.isEmpty()) return false
-
-    try {
-        val result = when {
-            bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> true  // JPEG
-            bytes.size >= 8 && bytes.sliceArray(0..7).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) -> true  // PNG
-            bytes.size >= 6 && (bytes.sliceArray(0..5).contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61)) ||
-                    bytes.sliceArray(0..5).contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61))) -> true  // GIF
-            bytes.size >= 12 && bytes.sliceArray(0..3).contentEquals(byteArrayOf(0x52, 0x49, 0x46, 0x46)) &&
-                    bytes.sliceArray(8..11).contentEquals(byteArrayOf(0x57, 0x45, 0x42, 0x50)) -> true  // WebP
-            bytes.size >= 2 && bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte() -> true  // BMP
-
-            // HEIC/HEIF
-            bytes.size >= 12 && bytes[4] == 0x66.toByte() && bytes[5] == 0x74.toByte() &&
-                    bytes[6] == 0x79.toByte() && bytes[7] == 0x70.toByte() && (
-                    (bytes[8] == 0x68.toByte() && bytes[9] == 0x65.toByte() && bytes[10] == 0x69.toByte() && bytes[11] == 0x63.toByte()) ||
-                            (bytes[8] == 0x6D.toByte() && bytes[9] == 0x69.toByte() && bytes[10] == 0x66.toByte() && bytes[11] == 0x31.toByte())
-                    ) -> {
-                Log.d("PicsTok", "✅ HEIC/HEIF detected")
-                true
-            }
-
-            else -> {
-                val allZero = bytes.all { it == 0.toByte() }
-                val hasData = bytes.any { it != 0.toByte() }
-                if (!allZero && hasData) {
-                    val hex = bytes.take(16).joinToString(" ") { "%02x".format(it) }
-                    Log.w("PicsTok", "Unknown format but has data. First 16: $hex")
-                    true
-                } else false
-            }
-        }
-
-        if (!result) {
-            val hex = bytes.take(16).joinToString(" ") { "%02x".format(it) }
-            Log.w("PicsTok", "Invalid image bytes: $hex  (size=${bytes.size})  URL=$url")
-        }
-
-        return result
-    } catch (e: Exception) {
-        Log.e("PicsTok", "Error in isValidImage for $url: ${e.message}")
-        return false
-    }
-}
-
 // --- Загрузка и шаринг (стандартные функции) ---
 
 private fun determineImageFormat(bytes: ByteArray, contentType: String): Pair<String, String> {
@@ -2937,6 +3131,15 @@ private suspend fun preCacheAllImages(
 
                             if (byteArray.isNotEmpty())  {
                                 // Сохраняем в кэш
+                                val max_cache_size = 1000
+                                if (state.cachedImages.size >= max_cache_size) {
+                                    val oldest = state.cachedImages.entries
+                                        .minByOrNull { it.value.timestamp }
+                                    if (oldest != null) {
+                                        state.cachedImages.remove(oldest.key)
+                                        Log.d("Cache", "Удалён старый кэш: ${oldest.key}")
+                                    }
+                                }
 
 
                                 state.cachedImages[url] = CachedImage(
