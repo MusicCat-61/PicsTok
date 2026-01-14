@@ -173,11 +173,13 @@ class ParserState {
     var parseStage by mutableStateOf("")
 
     var appLanguage by mutableStateOf("system")
+    var isNavigationBlocked by mutableStateOf(false)
 
     // Очистка этапа при новом парсинге
     fun clearCache() {
         cachedImages.clear()
         parseStage = ""
+        isNavigationBlocked = false
     }
 }
 
@@ -193,12 +195,7 @@ class MainActivity : ComponentActivity() {
             "ru" -> Locale("ru")
             "en" -> Locale.ENGLISH
             else -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    newBase.resources.configuration.locales[0]
-                } else {
-                    @Suppress("DEPRECATION")
-                    newBase.resources.configuration.locale
-                }
+                newBase.resources.configuration.locales[0]
             }
         }
 
@@ -346,6 +343,8 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
     var archivesTotalItems by remember { mutableIntStateOf(0) }
     var onSelectAllTrigger by remember { mutableStateOf(false) }
     var onDeleteTrigger by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
 
     // Вычисляем общее количество в зависимости от вкладки
     val totalItemsInCurrentTab = when (state.currentTab) {
@@ -412,18 +411,18 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
                     actions = {
                         IconButton(
                             onClick = {
-                                if (!state.isWorking) {
+                                // Разрешаем открывать настройки всегда, кроме парсинга
+                                if (!state.isNavigationBlocked && !state.isWorking) {
                                     showSettings = true
                                 } else {
-                                    // Показываем сообщение о блокировке
                                     Toast.makeText(
-                                        context, // ← Используем context из области видимости
+                                        context,
                                         context.getString(R.string.settings_disabled_during_parsing),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
                             },
-                            enabled = !state.isWorking // ← Блокировка во время парсинга
+                            enabled = !state.isNavigationBlocked && !state.isWorking
                         ) {
                             Icon(painterResource(R.drawable.ic_settings), null)
                         }
@@ -446,60 +445,33 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = state.currentTab == 0,
-                    onClick = {
-                        if (!state.isWorking) {
-                            state.currentTab = 0
-                            isSelectionMode = false
-                        } else {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.navigation_disabled_during_parsing),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    icon = { Icon(painterResource(R.drawable.ic_nav_parser), null) },
-                    label = { Text(stringResource(R.string.tab_parser)) },
-                    enabled = !state.isWorking
-                )
-                NavigationBarItem(
-                    selected = state.currentTab == 1,
-                    onClick = {
-                        if (!state.isWorking) {
-                            state.currentTab = 1
-                            isSelectionMode = false
-                        } else {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.navigation_disabled_during_parsing),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    icon = { Icon(painterResource(R.drawable.ic_nav_gallery), null) },
-                    label = { Text(stringResource(R.string.tab_gallery)) },
-                    enabled = !state.isWorking
-                )
-                NavigationBarItem(
-                    selected = state.currentTab == 2,
-                    onClick = {
-                        if (!state.isWorking) {
-                            state.currentTab = 2
-                            isSelectionMode = false
-                        } else {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.navigation_disabled_during_parsing),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    icon = { Icon(painterResource(R.drawable.ic_archive), null) },
-                    label = { Text(stringResource(R.string.tab_archives)) },
-                    enabled = !state.isWorking
-                )
+                listOf(
+                    Triple(0, R.string.tab_parser, R.drawable.ic_nav_parser),
+                    Triple(1, R.string.tab_gallery, R.drawable.ic_nav_gallery),
+                    Triple(2, R.string.tab_archives, R.drawable.ic_archive)
+                ).forEach { (tabIndex, labelRes, iconRes) ->
+                    NavigationBarItem(
+                        selected = state.currentTab == tabIndex,
+                        onClick = {
+                            // Блокируем если парсинг идет ИЛИ навигация заблокирована
+                            if (!state.isNavigationBlocked && !state.isWorking && state.currentTab != tabIndex) {
+                                state.currentTab = tabIndex
+                                isSelectionMode = false
+                            } else if ((state.isNavigationBlocked || state.isWorking) && state.currentTab != tabIndex) {
+                                scope.launch(Dispatchers.Main) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.navigation_disabled_during_parsing),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        icon = { Icon(painterResource(iconRes), null) },
+                        label = { Text(stringResource(labelRes)) },
+                        enabled = !state.isNavigationBlocked && !state.isWorking
+                    )
+                }
             }
         }
     ) { padding ->
@@ -732,6 +704,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
     var validImageUrls by remember { mutableStateOf<List<String>>(emptyList()) }
     var showNothingSelectedDialog by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var isNavigationBlocked by remember { mutableStateOf(false) }
 
     // Кэш для уже проверенных URL
     var checkedUrlsCache by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -827,10 +800,11 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
         }
     }
 
-    // Основная функция парсинга (вынесена отдельно)
+
     fun startActualParsing(url: String) {
         state.isWorking = true
         state.isFinished = false
+        state.isNavigationBlocked = true
         state.resultUrls = emptyList()
         state.processedCount = 0
         state.foundCount = 0
@@ -841,6 +815,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
         isSelectionMode = false
         showNothingSelectedDialog = false
         checkedUrlsCache = emptySet()
+
 
         pollingJob?.cancel()
 
@@ -962,6 +937,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         if (status == "completed") {
                             // Этап завершения
                             withContext(Dispatchers.Main) {
+                                state.isNavigationBlocked = false
                                 state.parseStage = getLocalizedMessage(context, "parse_finalizing")
 
                                 // ФИНАЛЬНОЕ СОХРАНЕНИЕ - все что пришло с сервера
@@ -974,6 +950,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                             withContext(Dispatchers.Main) {
                                 state.isWorking = false
                                 state.isFinished = true
+                                state.isNavigationBlocked = false
                                 state.url = ""
 
                                 // Используем локализованное сообщение о завершении
@@ -993,6 +970,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         // Если статус "failed" или "error"
                         if (status == "failed" || status == "error") {
                             withContext(Dispatchers.Main) {
+                                state.isNavigationBlocked = false
                                 state.isWorking = false
                                 state.parseStage = getLocalizedMessage(context, "error_server_error")
 
@@ -1019,6 +997,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                 } ?: run {
                     // Сработал общий таймаут
                     withContext(Dispatchers.Main) {
+                        state.isNavigationBlocked = false
                         state.isWorking = false
                         state.parseStage = context.getString(R.string.error_parse_timeout)
                         Toast.makeText(
@@ -1030,6 +1009,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                 }
             } catch (e: Exception) {
                 state.isWorking = false
+                state.isNavigationBlocked = false
                 withContext(Dispatchers.Main) {
                     state.parseStage = getLocalizedMessage(context, "error_server_error")
                     Toast.makeText(
@@ -1038,20 +1018,25 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                         Toast.LENGTH_LONG
                     ).show()
                 }
+            } finally {
+                // РАЗБЛОКИРУЕМ в любом случае
+                state.isNavigationBlocked = false
             }
         }
     }
-
     fun startParsing(url: String) {
         if (url.isBlank()) {
             Toast.makeText(context, context.getString(R.string.error_empty_link), Toast.LENGTH_SHORT).show()
             return
         }
 
+        state.isNavigationBlocked = true
+
         // Проверка формата URL
         val trimmedUrl = url.trim()
         if (!isValidTikTokUrl(trimmedUrl)) {
             Toast.makeText(context, context.getString(R.string.error_invalid_tiktok_url), Toast.LENGTH_LONG).show()
+            isNavigationBlocked = false
             return
         }
 
@@ -1069,6 +1054,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                     startActualParsing(trimmedUrl)
                 }
                 is NetworkCheckResult.FAILURE -> {
+                    isNavigationBlocked = false
                     // Показываем конкретную ошибку
                     Toast.makeText(context, context.getString(result.messageRes), Toast.LENGTH_LONG).show()
                 }
