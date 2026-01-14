@@ -1,5 +1,6 @@
 package com.musiccat.picstok
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.*
 import android.content.res.Configuration
@@ -317,14 +318,8 @@ class MainActivity : ComponentActivity() {
         val resources = resources
         val configuration = Configuration(resources.configuration)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            configuration.setLocale(locale)
-            createConfigurationContext(configuration)
-        } else {
-            @Suppress("DEPRECATION")
-            configuration.locale = locale
-            resources.updateConfiguration(configuration, resources.displayMetrics)
-        }
+        configuration.setLocale(locale)
+        createConfigurationContext(configuration)
 
         @Suppress("DEPRECATION")
         resources.updateConfiguration(configuration, resources.displayMetrics)
@@ -614,6 +609,7 @@ fun ParsingProgress(state: ParserState) {
 
 
 
+@SuppressLint("FrequentlyChangingValue")
 @Composable
 fun ParserScreen(state: ParserState, api: TikTokApi) {
     val context = LocalContext.current
@@ -693,9 +689,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
     val networkChecker = remember { NetworkChecker(context) }
 
 
-    val imageLoader = remember {
-        (context.applicationContext as Application).imageLoader
-    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var pollingJob by remember { mutableStateOf<Job?>(null) }
@@ -706,8 +700,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isNavigationBlocked by remember { mutableStateOf(false) }
 
-    // Кэш для уже проверенных URL
-    var checkedUrlsCache by remember { mutableStateOf<Set<String>>(emptySet()) }
+
 
     // ВАЖНО: Сохраняем состояние при уничтожении
     DisposableEffect(Unit) {
@@ -814,7 +807,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
         selectedUrls = emptySet()
         isSelectionMode = false
         showNothingSelectedDialog = false
-        checkedUrlsCache = emptySet()
+
 
 
         pollingJob?.cancel()
@@ -1567,7 +1560,7 @@ fun ParserScreen(state: ParserState, api: TikTokApi) {
                                         validImageUrls = emptyList()
                                         selectedUrls = emptySet()
                                         isSelectionMode = false
-                                        checkedUrlsCache = emptySet()
+
                                     },
                                     modifier = Modifier.weight(1f).height(48.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
@@ -3008,11 +3001,6 @@ private fun saveImgInternal(c: Context, url: String, isBatch: Boolean): Int {
             try {
                 val heifCoder = HeifCoder()  // ← создаём экземпляр
                 val bitmap = heifCoder.decode(bytes)  // ← декодируем в Bitmap
-
-                if (bitmap == null) {
-                    Log.e("PicsTok", "HeifCoder: Failed to decode HEIC to Bitmap")
-                    return 0
-                }
 
                 val outputStream = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 92, outputStream)
