@@ -90,4 +90,104 @@ fun getInternalStorageInfo(): StorageInfo {
     return StorageInfo(totalBytes, usedBytes)
 }
 
+/**
+ * Получение общего объема оперативной памяти устройства в байтах
+ */
+fun getTotalDeviceMemoryBytes(context: Context): Long {
+    return try {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val memoryInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        memoryInfo.totalMem
+    } catch (e: Exception) {
+        // Fallback значения для разных устройств
+        when {
+            android.os.Build.VERSION.SDK_INT >= 26 -> 4L * 1024 * 1024 * 1024 // 4GB
+            else -> 2L * 1024 * 1024 * 1024 // 2GB
+        }
+    }
+}
+
+/**
+ * Получение доступной оперативной памяти в байтах
+ */
+fun getAvailableDeviceMemoryBytes(context: Context): Long {
+    return try {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val memoryInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        memoryInfo.availMem
+    } catch (e: Exception) {
+        getTotalDeviceMemoryBytes(context) / 2 // 50% как fallback
+    }
+}
+
+/**
+ * Рассчитывает оптимальный размер дискового кеша в зависимости от свободного места
+ * Возвращает размер в байтах
+ */
+fun calculateOptimalDiskCacheSize(context: Context): Long {
+    val storageInfo = getInternalStorageInfo()
+    val freeStorageBytes = storageInfo.totalBytes - storageInfo.usedBytes
+
+    // Стратегия: занимаем не более 2% от свободного места, но не менее 50MB и не более 500MB
+    val maxCacheSize = (freeStorageBytes * 0.02).toLong()
+
+    return when {
+        maxCacheSize < 50L * 1024 * 1024 -> 50L * 1024 * 1024 // Минимум 50MB
+        maxCacheSize > 500L * 1024 * 1024 -> 500L * 1024 * 1024 // Максимум 500MB
+        else -> maxCacheSize
+    }
+}
+
+/**
+ * Рассчитывает оптимальный размер оперативного кеша в зависимости от ОЗУ
+ * Возвращает размер в байтах
+ */
+fun calculateOptimalMemoryCacheSize(context: Context): Long {
+    val totalMemoryBytes = getTotalDeviceMemoryBytes(context)
+
+    // Стратегия: занимаем не более 25% от общей ОЗУ, но не менее 32MB и не более 256MB
+    val maxMemoryCache = (totalMemoryBytes * 0.25).toLong()
+
+    return when {
+        maxMemoryCache < 32L * 1024 * 1024 -> 32L * 1024 * 1024 // Минимум 32MB
+        maxMemoryCache > 256L * 1024 * 1024 -> 256L * 1024 * 1024 // Максимум 256MB
+        else -> maxMemoryCache
+    }
+}
+
+/**
+ * Получение размера дискового кеша Coil
+ */
+fun getCoilDiskCacheSize(context: Context): Long {
+    val cacheDir = File(context.cacheDir, "image_cache")
+    return if (cacheDir.exists() && cacheDir.isDirectory) {
+        cacheDir.walk().filter { it.isFile }.sumOf { it.length() }
+    } else {
+        0L
+    }
+}
+
+/**
+ * Получение информации о всех видах памяти
+ */
+data class MemoryInfo(
+    val totalDeviceMemory: Long,
+    val availableDeviceMemory: Long,
+    val optimalDiskCacheSize: Long,
+    val optimalMemoryCacheSize: Long,
+    val currentDiskCacheSize: Long
+)
+
+fun getMemoryInfo(context: Context): MemoryInfo {
+    return MemoryInfo(
+        totalDeviceMemory = getTotalDeviceMemoryBytes(context),
+        availableDeviceMemory = getAvailableDeviceMemoryBytes(context),
+        optimalDiskCacheSize = calculateOptimalDiskCacheSize(context),
+        optimalMemoryCacheSize = calculateOptimalMemoryCacheSize(context),
+        currentDiskCacheSize = getCoilDiskCacheSize(context)
+    )
+}
+
 data class StorageInfo(val totalBytes: Long, val usedBytes: Long)
