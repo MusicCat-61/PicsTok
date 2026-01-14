@@ -443,7 +443,7 @@ fun MainScreen(state: ParserState, api: TikTokApi) {
                 listOf(
                     Triple(0, R.string.tab_parser, R.drawable.ic_nav_parser),
                     Triple(1, R.string.tab_gallery, R.drawable.ic_nav_gallery),
-                    Triple(2, R.string.tab_archives, R.drawable.ic_archive)
+                    Triple(2, R.string.tab_archives, R.drawable.ic_nav_archive)
                 ).forEach { (tabIndex, labelRes, iconRes) ->
                     NavigationBarItem(
                         selected = state.currentTab == tabIndex,
@@ -1860,7 +1860,21 @@ fun GalleryScreen(
 
         if (groupedItems.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.gallery_empty), color = Color.Gray, fontSize = 20.sp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_empty_gallery),
+                        null,
+                        modifier = Modifier.size(80.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        stringResource(R.string.gallery_empty),
+                        color = Color.Gray,
+                        fontSize = 20.sp
+                    )
+                }
             }
         } else {
             LazyColumn(
@@ -2201,7 +2215,21 @@ fun ArchivesScreen(
 
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.archives_empty), color = Color.Gray)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_empty_archives),
+                        null,
+                        modifier = Modifier.size(80.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        stringResource(R.string.archives_empty),
+                        color = Color.Gray,
+                        fontSize = 20.sp
+                    )
+                }
             }
         } else {
             LazyVerticalGrid(
